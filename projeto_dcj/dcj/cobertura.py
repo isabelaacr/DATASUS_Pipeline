@@ -1,0 +1,50 @@
+"""Diagnóstico das bases: o que a ingestão trouxe de errado e se os anos são comparáveis."""
+from __future__ import annotations
+
+import pandas as pd
+
+from dcj.colunas import Bruto, Col
+from dcj.configuracao import Configuracao
+from dcj.padronizacao import limpar_texto_numerico
+from dcj.referencias import CID_DA_DCJ, calcular_obitos_esperados_por_ano
+
+LARGURA_DO_CODIGO_DO_MUNICIPIO = 6
+TAMANHO_DO_PREFIXO_DA_UF = 2
+
+
+def calcular_codigos_de_uf(obitos_brutos: pd.DataFrame) -> pd.Series:
+    municipios = limpar_texto_numerico(obitos_brutos[Bruto.OBITO_MUNICIPIO]).str.zfill(LARGURA_DO_CODIGO_DO_MUNICIPIO)
+    return municipios.str[:TAMANHO_DO_PREFIXO_DA_UF]
+
+
+def auditar_obitos_brutos(obitos_brutos: pd.DataFrame, configuracao: Configuracao) -> dict[str, object]:
+    colunas_de_dados = [coluna for coluna in obitos_brutos.columns if coluna != Bruto.ORIGEM_DO_ARQUIVO]
+    ufs = calcular_codigos_de_uf(obitos_brutos)
+    return {
+        "linhas_brutas": len(obitos_brutos),
+        "duplicatas_integrais": int(obitos_brutos.duplicated(subset=colunas_de_dados).sum()),
+        "percentual_de_residentes_da_uf": round(100 * float((ufs == configuracao.prefixo_do_codigo_da_uf).mean()), 1),
+        "ufs_de_residencia_mais_comuns": (100 * ufs.value_counts(normalize=True).head(5)).round(1).to_dict(),
+        "linhas_por_arquivo": obitos_brutos[Bruto.ORIGEM_DO_ARQUIVO].value_counts().sort_index().to_dict(),
+    }
+
+
+def calcular_cobertura_por_ano(obitos: pd.DataFrame, internacoes: pd.DataFrame) -> pd.DataFrame:
+    """Colunas *_sobre_mediana longe de 1,0 indicam ano com cobertura anômala."""
+    obitos_por_ano = obitos[Col.DATA_OBITO].dt.year.value_counts().rename("obitos")
+    internacoes_por_ano = internacoes[Col.DATA_INTERNACAO].dt.year.value_counts().rename("internacoes")
+    tabela = pd.concat([obitos_por_ano, internacoes_por_ano], axis=1).fillna(0).astype(int).sort_index()
+    for coluna in ("obitos", "internacoes"):
+        tabela[f"{coluna}_sobre_mediana"] = (tabela[coluna] / tabela[coluna].median()).round(2)
+    return tabela
+
+
+def comparar_obitos_por_dcj_com_esperado(obitos: pd.DataFrame, populacao: int) -> pd.DataFrame:
+    """Ref.: Boletim DCJ, p. 12 (1 a 2 mortes por milhão por ano). Valores abaixo do mínimo esperado
+    são compatíveis com mascaramento diagnóstico, mas também com cobertura incompleta do SIM."""
+    minimo, maximo = calcular_obitos_esperados_por_ano(populacao)
+    eh_dcj = obitos[Col.CAUSA_BASICA].str.startswith(CID_DA_DCJ, na=False)
+    por_ano = obitos[eh_dcj][Col.DATA_OBITO].dt.year.value_counts().sort_index().rename("obitos_a810_observados").rename_axis("ano")
+    tabela = por_ano.to_frame().assign(esperado_minimo=round(minimo, 1), esperado_maximo=round(maximo, 1))
+    tabela["abaixo_do_minimo_esperado"] = tabela["obitos_a810_observados"] < minimo
+    return tabela

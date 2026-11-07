@@ -1,0 +1,9 @@
+pandas>=2.2
+numpy
+pyarrow
+scipy
+scikit-learn
+matplotlib
+ipykernel   # relatorio.ipynb no VS Code
+pysus>=2.0  # só para --baixar
+pytest      # testes
