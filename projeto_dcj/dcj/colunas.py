@@ -1,6 +1,5 @@
 """Nomes de colunas em um só lugar: evita strings mágicas espalhadas pelo código."""
 
-
 class Bruto:
     """Nomes originais do DATASUS."""
 
@@ -13,6 +12,7 @@ class Bruto:
     OBITO_IDADE = "IDADE"
     OBITO_CAUSA = "CAUSABAS"
     OBITO_NUMERO_DA_DECLARACAO = "NUMERODO"
+    OBITO_LINHAS_DA_DECLARACAO = ("LINHAA", "LINHAB", "LINHAC", "LINHAD", "LINHAII")
 
     INTERNACAO_MUNICIPIO = "MUNIC_RES"
     INTERNACAO_NASCIMENTO = "NASC"
@@ -44,12 +44,11 @@ class Col:
     MES_DIA_NASCIMENTO = "mes_dia_nascimento"
     IDADE_ANOS = "idade_anos"
     CAUSA_BASICA = "causa_basica"
+    DCJ_NA_DECLARACAO = "dcj_em_qualquer_linha"
     DATA_OBITO = "data_obito"
     
-    # --- NOVAS COLUNAS ADICIONADAS AQUI ---
     DATA_OBITO_NOTIFICADA = "data_obito_notificada"
     CLASSIFICACAO_FINAL = "classificacao_final"
-    # --------------------------------------
 
     DATA_INTERNACAO = "data_internacao"
     DIAGNOSTICO_PRINCIPAL = "diagnostico_principal"

@@ -13,8 +13,7 @@ from dcj.captura_recaptura import (
     DuasListas, ajustar_pares_pelo_acaso, extrapolar_pares_pela_cobertura_da_data)
 from dcj.colunas import Col
 from dcj.configuracao import Configuracao
-from dcj.permutacao_sinan import preparar_obitos_para_o_sorteio, simular_cruzamentos_ao_acaso
-from dcj.referencias import CID_DA_DCJ
+from dcj.permutacao_sinan import manter_obitos_por_dcj, preparar_obitos_para_o_sorteio, simular_cruzamentos_ao_acaso
 from dcj.sinan import (
     cruzar_por_chave, manter_obitos_a_partir_dos_sintomas, manter_obitos_na_janela_de_sobrevida)
 
@@ -23,8 +22,7 @@ ID_DA_NOTIFICACAO = "id_da_notificacao"
 CLASSIFICACAO_FINAL_DO_RECORTE = "1"
 
 
-def selecionar_obitos_por_dcj(obitos: pd.DataFrame) -> pd.DataFrame:
-    return obitos[obitos[Col.CAUSA_BASICA].astype("string").str.startswith(CID_DA_DCJ, na=False)]
+selecionar_obitos_por_dcj = manter_obitos_por_dcj
 
 
 def listar_cruzamentos_na_janela(notificacoes: pd.DataFrame, obitos_por_dcj: pd.DataFrame) -> pd.DataFrame:

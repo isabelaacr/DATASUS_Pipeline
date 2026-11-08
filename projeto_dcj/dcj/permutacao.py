@@ -1,94 +1,74 @@
-"""Quantos pares finais o ACASO produziria? Embaralha o dia/mês de nascimento das internações
-e aplica as mesmas travas do pareamento real, para comparar igual com igual."""
+"""Permutação do pareamento SIM x SIH para ver quanto do excesso de pares é vínculo real."""
 from __future__ import annotations
-
-from dataclasses import dataclass
-from typing import NamedTuple
 
 import numpy as np
 import pandas as pd
 
 from dcj.colunas import Col
-from dcj.configuracao import Configuracao, CriterioDeDesempate
-from dcj.pareamento import manter_um_para_um, preparar_lado
+from dcj.configuracao import Configuracao
+from dcj.pareamento import adicionar_dias_ate_o_obito, manter_um_para_um, preparar_lado
 
-ETAPAS = ("bloco + dia/mês iguais", "+ internação <= óbito", "+ 1:1 (pares finais)")
-SUFIXO_DA_INTERNACAO, SUFIXO_DO_OBITO = "_internacao", "_obito"
-COLUNA_INTERNACAO_ANTES_DO_OBITO = "internacao_antes_do_obito"
-
-
-class ContagemPorEtapa(NamedTuple):
-    com_mesmo_dia_e_mes: int
-    apos_internacao_antes_do_obito: int
-    pares_finais: int
+ETAPAS_DO_PAREAMENTO = ("bloco + dia/mês iguais", "+ internação <= óbito", "+ 1:1 (pares finais)")
+BLOCO_DO_EMBARALHAMENTO = [Col.MUNICIPIO, Col.SEXO]
 
 
-@dataclass(frozen=True)
-class CandidatosDoBloco:
-    pares: pd.DataFrame
-    dia_e_mes_das_internacoes: np.ndarray
+def contar_etapas_do_pareamento(candidatos: pd.DataFrame, configuracao: Configuracao) -> tuple[int, int, int]:
+    validos = candidatos[candidatos[Col.DATA_INTERNACAO] <= candidatos[Col.DATA_OBITO]]
+    unicos = manter_um_para_um(validos, configuracao.criterio_de_desempate)
+    return len(candidatos), len(validos), len(unicos)
 
 
-def montar_bloco(exigir_mesmo_municipio: bool) -> list[str]:
-    municipio = [Col.MUNICIPIO] if exigir_mesmo_municipio else []
-    return municipio + [Col.SEXO, Col.ANO_NASCIMENTO]
+def embaralhar_dentro_do_bloco(valores: np.ndarray, identificador_do_bloco: np.ndarray,
+                               gerador: np.random.Generator) -> np.ndarray:
+    ordem_original = np.argsort(identificador_do_bloco, kind="stable")
+    ordem_sorteada = np.lexsort((gerador.random(len(valores)), identificador_do_bloco))
+    embaralhados = np.empty_like(valores)
+    embaralhados[ordem_original] = valores[ordem_sorteada]
+    return embaralhados
 
 
-def montar_candidatos_do_bloco(internacoes: pd.DataFrame, obitos: pd.DataFrame,
-                               exigir_mesmo_municipio: bool) -> CandidatosDoBloco:
-    bloco = montar_bloco(exigir_mesmo_municipio)
-    chave_completa = bloco + [Col.MES_DIA_NASCIMENTO]
-    do_lado_das_internacoes = preparar_lado(internacoes, chave_completa, Col.ID_INTERNACAO)
-    do_lado_dos_obitos = preparar_lado(obitos, chave_completa, Col.ID_OBITO)
-    pares = do_lado_das_internacoes[[Col.ID_INTERNACAO, Col.DATA_INTERNACAO, Col.MES_DIA_NASCIMENTO] + bloco].merge(
-        do_lado_dos_obitos[[Col.ID_OBITO, Col.DATA_OBITO, Col.MES_DIA_NASCIMENTO] + bloco], on=bloco,
-        suffixes=(SUFIXO_DA_INTERNACAO, SUFIXO_DO_OBITO))
-    pares[COLUNA_INTERNACAO_ANTES_DO_OBITO] = (pares[Col.DATA_INTERNACAO] <= pares[Col.DATA_OBITO]).to_numpy()
-    return CandidatosDoBloco(pares, do_lado_das_internacoes[Col.MES_DIA_NASCIMENTO].to_numpy(dtype=object))
-
-
-def contar_etapas(candidatos: CandidatosDoBloco, dia_e_mes_das_internacoes: np.ndarray,
-                  criterio_de_desempate: CriterioDeDesempate) -> ContagemPorEtapa:
-    pares = candidatos.pares
-    dia_e_mes_sorteado = dia_e_mes_das_internacoes[pares[Col.ID_INTERNACAO].to_numpy()]
-    mesmo_dia_e_mes = dia_e_mes_sorteado == pares[Col.MES_DIA_NASCIMENTO + SUFIXO_DO_OBITO].to_numpy(dtype=object)
-    validos = mesmo_dia_e_mes & pares[COLUNA_INTERNACAO_ANTES_DO_OBITO].to_numpy()
-    unicos = manter_um_para_um(pares.loc[validos], criterio_de_desempate)
-    return ContagemPorEtapa(int(mesmo_dia_e_mes.sum()), int(validos.sum()), len(unicos))
-
-
-def simular_contagens_ao_acaso(candidatos: CandidatosDoBloco, configuracao: Configuracao) -> np.ndarray:
+def simular_pareamentos_ao_acaso(internacoes_preparadas: pd.DataFrame, obitos_preparados: pd.DataFrame,
+                                 configuracao: Configuracao) -> np.ndarray:
     gerador = np.random.default_rng(configuracao.semente_aleatoria)
-    contagens = [contar_etapas(candidatos, gerador.permutation(candidatos.dia_e_mes_das_internacoes),
-                               configuracao.criterio_de_desempate)
-                 for _ in range(configuracao.numero_de_permutacoes)]
-    return np.array(contagens)
+    chave = BLOCO_DO_EMBARALHAMENTO + [Col.DATA_NASCIMENTO]
+
+    identificador = obitos_preparados.groupby(BLOCO_DO_EMBARALHAMENTO, sort=False).ngroup().to_numpy()
+    datas = obitos_preparados[Col.DATA_NASCIMENTO].to_numpy()
+
+    resultados = []
+    for _ in range(configuracao.numero_de_permutacoes):
+        datas_sorteadas = embaralhar_dentro_do_bloco(datas, identificador, gerador)
+        obitos_sorteados = obitos_preparados.assign(**{Col.DATA_NASCIMENTO: datas_sorteadas})
+        candidatos = internacoes_preparadas.merge(obitos_sorteados, on=chave, how="inner")
+        candidatos = adicionar_dias_ate_o_obito(candidatos)
+        resultados.append(contar_etapas_do_pareamento(candidatos, configuracao))
+    return np.array(resultados)
 
 
-def resumir_permutacao(observado: tuple[int, ...], simuladas: np.ndarray,
-                       nomes_das_etapas: tuple[str, ...] = ETAPAS) -> pd.DataFrame:
-    total = len(simuladas)
-    linhas = [{
-        "etapa": nome, "observado": observado[posicao],
-        "media_ao_acaso": round(float(simuladas[:, posicao].mean()), 2),
-        "percentil_95_ao_acaso": int(np.percentile(simuladas[:, posicao], 95)),
-        "excesso": round(float(observado[posicao] - simuladas[:, posicao].mean()), 2),
-        "p_valor_unilateral": round((1 + int((simuladas[:, posicao] >= observado[posicao]).sum())) / (1 + total), 4),
-    } for posicao, nome in enumerate(nomes_das_etapas)]
+def resumir_permutacao(observado: tuple[int, ...], simuladas: np.ndarray, nomes_das_etapas: tuple[str, ...]) -> pd.DataFrame:
+    linhas = []
+    for posicao, nome in enumerate(nomes_das_etapas):
+        linhas.append({
+            "etapa": nome, "observado": observado[posicao],
+            "media_ao_acaso": round(float(simuladas[:, posicao].mean()), 2),
+            "percentil_95_ao_acaso": int(np.percentile(simuladas[:, posicao], 95)),
+            "excesso": round(observado[posicao] - simuladas[:, posicao].mean(), 2),
+            "p_valor_unilateral": round((1 + int((simuladas[:, posicao] >= observado[posicao]).sum())) / (1 + simuladas.shape[0]), 4),
+        })
     return pd.DataFrame(linhas)
 
 
-def avaliar_pareamento_contra_o_acaso(internacoes: pd.DataFrame, obitos: pd.DataFrame, configuracao: Configuracao) -> pd.DataFrame:
-    candidatos = montar_candidatos_do_bloco(internacoes, obitos, configuracao.exigir_mesmo_municipio)
-    observado = contar_etapas(candidatos, candidatos.dia_e_mes_das_internacoes, configuracao.criterio_de_desempate)
-    return resumir_permutacao(observado, simular_contagens_ao_acaso(candidatos, configuracao))
+def avaliar_pareamento_contra_o_acaso(internacoes: pd.DataFrame, obitos: pd.DataFrame,
+                                      configuracao: Configuracao) -> pd.DataFrame:
+    chave = [Col.MUNICIPIO, Col.SEXO, Col.DATA_NASCIMENTO]
+    internacoes_preparadas = preparar_lado(internacoes, chave, Col.ID_INTERNACAO)
+    obitos_preparados = preparar_lado(obitos, chave, Col.ID_OBITO)
 
-def avaliar_cruzamento_sinan_contra_o_acaso_apenas_a810(
-    notificacoes: pd.DataFrame, obitos: pd.DataFrame, configuracao: Configuracao
-) -> pd.DataFrame:
-    """Versão corrigida: restringe a permutação aos óbitos A810."""
-    obitos_a810 = obitos[obitos[Col.CAUSA_BASICA].str.startswith("A81", na=False)].copy()
-    sorteaveis = preparar_obitos_para_o_sorteio(obitos_a810)
-    observado = contar_etapas_do_cruzamento(notificacoes, sorteaveis)
-    simuladas = simular_cruzamentos_ao_acaso(notificacoes, sorteaveis, configuracao)
-    return resumir_permutacao(observado, simuladas, ETAPAS_DO_SINAN)
+    candidatos = internacoes_preparadas.merge(obitos_preparados, on=chave, how="inner")
+    if candidatos.empty:
+        return pd.DataFrame()
+
+    candidatos = adicionar_dias_ate_o_obito(candidatos)
+    observado = contar_etapas_do_pareamento(candidatos, configuracao)
+    simuladas = simular_pareamentos_ao_acaso(internacoes_preparadas, obitos_preparados, configuracao)
+    return resumir_permutacao(observado, simuladas, ETAPAS_DO_PAREAMENTO)

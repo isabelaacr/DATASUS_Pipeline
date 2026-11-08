@@ -3,6 +3,10 @@
 **Pipeline para pareamento determinístico de dados (SINAN x SIM x SIH) e escore de suspeição da Doença de Creutzfeldt-Jakob (DCJ) no Brasil.**
 
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)
+<<<<<<< HEAD
+=======
+![Tests](<https://img.shields.io/badge/tests-79%20passed-green.svg>)
+>>>>>>> 0ede1f9 (feat: aplica correcoes de validacao (permutacao, CIDs genericos, causas associadas) e atualiza resultados)
 ![PySUS](https://img.shields.io/badge/PySUS-2.11.7-orange.svg)
 
 ---
@@ -11,9 +15,9 @@
 
 A Doença de Creutzfeldt-Jakob (DCJ) é uma doença priônica rara, neurodegenerativa e invariavelmente fatal (sobrevida média de 5 meses). Apesar de ser de notificação compulsória no Brasil desde 2005, o sistema de vigilância (SINAN) apresenta limitações críticas, documentadas no Boletim Epidemiológico do Ministério da Saúde (2022) e na literatura recente (Barbosa et al., 2026):
 
-*   **Subnotificação:** Estima-se que o país tenha subnotificado mais da metade dos casos esperados.
-*   **Dados incompletos:** 55,8% das notificações não possuem dados de evolução (óbito/cura), e 36,3% não têm classificação final.
-*   **Inconsistências:** Há registros de "cura" em uma doença com 100% de letalidade, demonstrando falhas de preenchimento.
+* **Subnotificação:** Estima-se que o país tenha subnotificado mais da metade dos casos esperados.
+* **Dados incompletos:** 55,8% das notificações não possuem dados de evolução (óbito/cura), e 36,3% não têm classificação final.
+* **Inconsistências:** Há registros de "cura" em uma doença com 100% de letalidade, demonstrando falhas de preenchimento.
 
 **A solução proposta por este projeto:** Como o SINAN é frágil, este pipeline cruza as notificações do SINAN com os registros de óbitos (SIM) e internações (SIH) do DATASUS. Utilizando regras temporais e testes de permutação, o código filtra falsos positivos e encontra os "vínculos reais" de pacientes, permitindo uma vigilância ativa mais confiável.
 
@@ -36,12 +40,20 @@ A Doença de Creutzfeldt-Jakob (DCJ) é uma doença priônica rara, neurodegener
 Para garantir a sanidade dos resultados gerados pelo pipeline, os outputs brutos para o código **CID-10: A81.0** (ou chaves geradas por escore) devem se alinhar às séries auditadas pelo Ministério da Saúde:
 
 ### 🇧🇷 Cenário Nacional
-*   **Pico de Notificações:** O ano de 2019 representa o ápice histórico do SINAN com **174 casos suspeitos** notificados.
-*   **Efeito Pandemia:** Espera-se uma redução acentuada de registros brutos nos anos de **2020 e 2021** em decorrência da sobrecarga hospitalar por Covid-19.
 
-### 🦅 Recorte Regional: Rio Grande do Sul (RS)
-*   **Volumetria Anual:** Devido à incidência global da doença (1 a 2 casos por milhão), a filtragem para o RS deve resultar em uma média estável de **10 a 20 notificações suspeitas por ano**, convertendo-se em **2 a 5 casos reais confirmados/ano**.
-*   **Histórico de Confirmações:** No acumulado auditado, o estado do RS possui **35 casos confirmados**, ocupando a 5ª posição no ranking nacional.
+* **Pico de Notificações:** O ano de 2019 representa o ápice histórico do SINAN com **174 casos suspeitos** notificados.
+* **Efeito Pandemia:** Espera-se uma redução acentuada de registros brutos nos anos de **2020 e 2021** em decorrência da sobrecarga hospitalar por Covid-19.
+
+### 🦅 Recorte Regional: Rio Grande do Sul (RS), 2017–2022
+
+* **Esperado:** população de 10,88 milhões (Censo 2022) × 1 a 2 óbitos/milhão/ano = **11 a 22 óbitos reais por DCJ/ano**
+  (65 a 131 no período). Rode com `--populacao 10882965`.
+* **Observado na execução de referência:** 44 óbitos com causa básica A81.0 no SIM (~0,7/milhão/ano, abaixo do mínimo),
+  45 notificações no SINAN (~7,5/ano), 28 com CLASSI_FIN=1 e 10 vínculos SINAN × SIM.
+* **Leitura:** no máximo ~77% dos óbitos A81.0 não têm notificação correspondente (limite superior: a chave fraca
+  também perde pares). O Chapman (~187) passa do teto plausível e deve ser lido como limite superior.
+
+
 
 ---
 
@@ -66,7 +78,9 @@ pip install -r requirements.txt
 ```
 
 ### 2. Executando os Testes
+
 O projeto conta com uma suíte de testes unitários e de integração utilizando dados sintéticos para validar os algoritmos de pareamento e permutação:
+
 ```bash
 pytest projeto_dcj/tests/
 ```

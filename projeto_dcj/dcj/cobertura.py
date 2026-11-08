@@ -39,6 +39,17 @@ def calcular_cobertura_por_ano(obitos: pd.DataFrame, internacoes: pd.DataFrame) 
     return tabela
 
 
+def contar_dcj_fora_da_causa_basica(obitos: pd.DataFrame) -> pd.DataFrame:
+    """Óbitos com A81.0 em alguma linha da declaração, separados pela causa básica: os da coluna
+    `dcj_so_em_causa_associada` são mascaramento documentado na própria declaração."""
+    basica = obitos[Col.CAUSA_BASICA].str.startswith(CID_DA_DCJ, na=False)
+    associada = obitos[Col.DCJ_NA_DECLARACAO] & ~basica
+    ano = obitos[Col.DATA_OBITO].dt.year.rename("ano")
+    tabela = pd.DataFrame({"dcj_causa_basica": basica, "dcj_so_em_causa_associada": associada}).groupby(ano).sum()
+    tabela["causas_basicas_dos_associados"] = (
+        obitos[associada].groupby(ano[associada])[Col.CAUSA_BASICA].agg(lambda c: ", ".join(sorted(set(c)))))
+    return tabela.fillna({"causas_basicas_dos_associados": ""})
+
 def comparar_obitos_por_dcj_com_esperado(obitos: pd.DataFrame, populacao: int) -> pd.DataFrame:
     """Ref.: Boletim DCJ, p. 12 (1 a 2 mortes por milhão por ano). Valores abaixo do mínimo esperado
     são compatíveis com mascaramento diagnóstico, mas também com cobertura incompleta do SIM."""

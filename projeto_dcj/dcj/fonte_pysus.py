@@ -10,11 +10,17 @@ from importlib import metadata
 from types import ModuleType
 from typing import Callable
 
+import httpx
 import pandas as pd
 
 CODIGO_DO_AGRAVO_DCJ_NO_SINAN = "DCRJ"
 Tentativa = Callable[[], pd.DataFrame]
-ERROS_DE_API_INCOMPATIVEL = (ImportError, AttributeError, TypeError, KeyError, IndexError, ValueError)
+
+# Adicionamos httpx.HTTPError, OSError e ConnectionError para capturar o timeout da API nova.
+ERROS_DE_API_INCOMPATIVEL = (
+    ImportError, AttributeError, TypeError, KeyError, IndexError, ValueError,
+    httpx.HTTPError, OSError, ConnectionError
+)
 
 # Prefixos IBGE das UFs; usados para filtrar SIM (que baixa consolidado nacional).
 _PREFIXOS_DAS_UFS = {
@@ -80,7 +86,7 @@ def _consultar_pelo_cliente(**filtros: object) -> pd.DataFrame:
 
 def obter_obitos_do_pysus(sigla_uf: str, ano: int) -> pd.DataFrame:
     tabela = executar_primeira_tentativa_valida({
-        # API REAL DO PYSUS 2.11.7 EXIGE state= PRIMEIRO
+        # A API real do PySUS 2.11.7 exige state= primeiro.
         "pysus.ftp.sim (state=)": lambda: _importar_pysus().ftp.sim(
             state=sigla_uf, year=ano, as_dataframe=True),
         "pysus.ftp.sim (uf=)": lambda: _importar_pysus().ftp.sim(
@@ -103,6 +109,8 @@ def obter_internacoes_do_pysus(sigla_uf: str, ano: int, mes: int) -> pd.DataFram
             uf=sigla_uf, year=ano, month=mes, as_dataframe=True),
         "pysus.sih (legado)": lambda: _importar_pysus().sih(sigla_uf, ano, mes, as_dataframe=True),
         "PySUS.query": lambda: _consultar_pelo_cliente(dataset="sih", state=sigla_uf, year=ano, month=mes)}))
+
+
 def obter_notificacoes_do_pysus(ano: int) -> pd.DataFrame:
     """Arquivo nacional do agravo (DCRJBRAA); o filtro por UF é feito depois."""
     agravo = CODIGO_DO_AGRAVO_DCJ_NO_SINAN

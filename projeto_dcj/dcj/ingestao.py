@@ -1,6 +1,7 @@
 """Download de SIM, SIH e SINAN via PySUS. Grava SOMENTE arquivos brutos, nunca consolidados."""
 from __future__ import annotations
 
+import re
 import logging
 from dataclasses import dataclass
 from pathlib import Path
@@ -47,9 +48,10 @@ def manter_residentes_do_sim(tabela: pd.DataFrame, prefixo_do_codigo_da_uf: str)
 def manter_colunas_e_cids_de_interesse(tabela: pd.DataFrame, colunas: tuple[str, ...], colunas_de_cid: list[str],
                                        cids: tuple[str, ...]) -> pd.DataFrame:
     reduzida = tabela[[coluna for coluna in colunas if coluna in tabela.columns]]
+    padrao = r"(?:^|\*)\s*(?:" + "|".join(re.escape(cid) for cid in cids) + ")"
     de_interesse = pd.Series(False, index=reduzida.index)
     for coluna in (nome for nome in colunas_de_cid if nome in reduzida.columns):
-        de_interesse |= reduzida[coluna].astype("string").str.startswith(cids, na=False)
+        de_interesse |= reduzida[coluna].astype("string").str.upper().str.contains(padrao, regex=True, na=False)
     return reduzida[de_interesse]
 
 
@@ -62,8 +64,9 @@ def baixar_obitos(configuracao: Configuracao, obter: ObterObitos = obter_obitos_
             return manter_residentes_do_sim(obter(configuracao.sigla_uf, ano),
                                             configuracao.prefixo_do_codigo_da_uf)
 
-        _baixar_e_gravar(destino, _baixar_filtrado, configuracao.colunas_dos_obitos,
-                         [Bruto.OBITO_CAUSA], configuracao, falhas, f"SIM {ano}")
+        _baixar_e_gravar(destino, _baixar_filtrado, configuracao.colunas_do_download_dos_obitos,
+                         [Bruto.OBITO_CAUSA, *Bruto.OBITO_LINHAS_DA_DECLARACAO], configuracao, falhas,
+                         f"SIM {ano}", configuracao.cids_do_sim)
     return falhas
 
 

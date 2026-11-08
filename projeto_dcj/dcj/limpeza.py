@@ -6,7 +6,7 @@ from functools import partial
 from typing import Callable, Sequence
 
 import pandas as pd
-
+from dcj.referencias import CID_DA_DCJ
 from dcj.colunas import Bruto, Col
 from dcj.configuracao import Configuracao
 from dcj.erros import garantir_colunas
@@ -42,6 +42,15 @@ def adicionar_dados_de_nascimento(tabela: pd.DataFrame, datas_de_nascimento: pd.
     })
 
 
+def marcar_dcj_na_declaracao(tabela: pd.DataFrame) -> pd.Series:
+    """A81.0 em qualquer linha da declaração (inclui a causa básica). Parquets sem as linhas: só a causa básica."""
+    campos = [Bruto.OBITO_CAUSA, *(c for c in Bruto.OBITO_LINHAS_DA_DECLARACAO if c in tabela.columns)]
+    marcado = pd.Series(False, index=tabela.index)
+    for campo in campos:
+        marcado |= tabela[campo].astype("string").str.upper().str.contains(
+            rf"(?:^|\*)\s*{CID_DA_DCJ}", regex=True, na=False)
+    return marcado
+
 def enriquecer_obitos(tabela: pd.DataFrame) -> pd.DataFrame:
     com_nascimento = adicionar_dados_de_nascimento(tabela, converter_data_ddmmaaaa(tabela[Bruto.OBITO_NASCIMENTO]))
     return com_nascimento.assign(**{
@@ -49,8 +58,8 @@ def enriquecer_obitos(tabela: pd.DataFrame) -> pd.DataFrame:
         Col.MUNICIPIO: tabela[Bruto.OBITO_MUNICIPIO],
         Col.IDADE_ANOS: decodificar_idade_em_anos(tabela[Bruto.OBITO_IDADE]),
         Col.CAUSA_BASICA: padronizar_cid(tabela[Bruto.OBITO_CAUSA]),
+        Col.DCJ_NA_DECLARACAO: marcar_dcj_na_declaracao(tabela),  
     })
-
 
 def enriquecer_internacoes(tabela: pd.DataFrame) -> pd.DataFrame:
     com_nascimento = adicionar_dados_de_nascimento(tabela, converter_data_aaaammdd(tabela[Bruto.INTERNACAO_NASCIMENTO]))

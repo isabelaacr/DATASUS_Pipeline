@@ -15,6 +15,7 @@ import pandas as pd
 from dcj.colunas import Col
 from dcj.configuracao import Configuracao
 from dcj.permutacao import resumir_permutacao
+from dcj.referencias import CID_DA_DCJ
 from dcj.sinan import (
     COLUNAS_DO_OBITO_NO_CRUZAMENTO, cruzar_sinan_com_obitos, listar_individuos_do_cruzamento,
     manter_obitos_na_janela_de_sobrevida)
@@ -65,12 +66,24 @@ def avaliar_cruzamento_sinan_contra_o_acaso(notificacoes: pd.DataFrame, obitos: 
     return resumir_permutacao(observado, simuladas, ETAPAS_DO_SINAN)
 
 
-def avaliar_cruzamento_sinan_contra_o_acaso_apenas_a810(
-    notificacoes: pd.DataFrame, obitos: pd.DataFrame, configuracao: Configuracao
-) -> pd.DataFrame:
-    """Versão corrigida: restringe a permutação aos óbitos A810."""
-    obitos_a810 = obitos[obitos[Col.CAUSA_BASICA].str.startswith("A81", na=False)].copy()
-    sorteaveis = preparar_obitos_para_o_sorteio(obitos_a810)
-    observado = contar_etapas_do_cruzamento(notificacoes, sorteaveis)
-    simuladas = simular_cruzamentos_ao_acaso(notificacoes, sorteaveis, configuracao)
+def manter_obitos_por_dcj(obitos: pd.DataFrame) -> pd.DataFrame:
+    return obitos[obitos[Col.CAUSA_BASICA].astype("string").str.startswith(CID_DA_DCJ, na=False)]
+
+
+def contar_etapas_do_cruzamento_com_dcj(notificacoes: pd.DataFrame, obitos: pd.DataFrame) -> tuple[int, int, int, int]:
+    """Conta só os vínculos com óbitos A81.0; o filtro é aplicado DEPOIS do embaralhamento."""
+    return contar_etapas_do_cruzamento(notificacoes, manter_obitos_por_dcj(obitos))
+
+
+def avaliar_cruzamento_sinan_contra_o_acaso_apenas_a810(notificacoes: pd.DataFrame, obitos: pd.DataFrame,
+                                                        configuracao: Configuracao) -> pd.DataFrame:
+    """Vínculos com óbitos A81.0 contra o acaso.
+
+    O embaralhamento usa TODOS os óbitos do bloco (município, sexo): um óbito A81.0 pode receber o ano de nascimento
+    de um óbito por outra causa, o que desfaz o vínculo verdadeiro. Embaralhar só entre óbitos A81.0 não funciona:
+    quase todo bloco tem um único óbito A81.0, a permutação vira identidade e o p-valor fica perto de 1 sempre."""
+    sorteaveis = preparar_obitos_para_o_sorteio(obitos)
+    observado = contar_etapas_do_cruzamento_com_dcj(notificacoes, sorteaveis)
+    simuladas = simular_cruzamentos_ao_acaso(notificacoes, sorteaveis, configuracao,
+                                             contar_etapas_do_cruzamento_com_dcj)
     return resumir_permutacao(observado, simuladas, ETAPAS_DO_SINAN)

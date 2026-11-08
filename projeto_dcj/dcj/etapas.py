@@ -10,7 +10,11 @@ import pandas as pd
 from dcj import armazenamento as disco
 from dcj.arquivos import (
     carregar_internacoes_brutas, carregar_notificacoes_brutas, carregar_obitos_brutos, existem_notificacoes_brutas)
-from dcj.cobertura import auditar_obitos_brutos, calcular_cobertura_por_ano, comparar_obitos_por_dcj_com_esperado
+
+from dcj.cobertura import (
+    auditar_obitos_brutos, calcular_cobertura_por_ano, comparar_obitos_por_dcj_com_esperado,
+    contar_dcj_fora_da_causa_basica)
+
 from dcj.concordancia import calcular_concordancia
 from dcj.configuracao import Configuracao
 from dcj.escore import (
@@ -24,12 +28,7 @@ from dcj.sinan import (
     manter_obitos_na_janela_de_sobrevida, preparar_notificacoes,
     resumir_cruzamentos, resumir_perfil_dos_individuos)
 from dcj.permutacao import avaliar_pareamento_contra_o_acaso
-# IMPORTS DA PERMUTAÇÃO ATUALIZADOS
-from dcj.permutacao_sinan import (
-    avaliar_cruzamento_sinan_contra_o_acaso,
-    avaliar_cruzamento_sinan_contra_o_acaso_apenas_a810
-)
-
+from dcj.permutacao_sinan import avaliar_cruzamento_sinan_contra_o_acaso_apenas_a810
 from dcj.captura_recaptura import montar_tabela_de_sensibilidade
 from dcj.cenarios_de_captura import montar_cenarios_de_captura
 
@@ -103,6 +102,12 @@ def executar_validacao(configuracao: Configuracao) -> None:
     relatar("COBERTURA POR ANO", cobertura)
     relatar("PERMUTAÇÃO", permutacao)
     relatar("CONCORDÂNCIA SIH x SIM", concordancia)
+    
+
+    mascaramento = contar_dcj_fora_da_causa_basica(obitos)
+    _gravar_resultado(configuracao, "dcj_fora_da_causa_basica", mascaramento, manter_indice=True)
+    relatar("A81.0 NA DECLARAÇÃO x CAUSA BÁSICA", mascaramento)
+    
     _validar_contra_o_esperado_do_boletim(configuracao, obitos)
 
 
@@ -151,7 +156,6 @@ def executar_validacao_sinan(configuracao: Configuracao) -> None:
     obitos, _ = _ler_limpos(configuracao)
     notificacoes = leitura[1]
     
-    # CORREÇÃO AQUI: Chamada restrita aos óbitos A810
     permutacao = avaliar_cruzamento_sinan_contra_o_acaso_apenas_a810(notificacoes, obitos, configuracao)
     
     _gravar_resultado(configuracao, "permutacao_sinan", permutacao)

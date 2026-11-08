@@ -40,7 +40,7 @@ class Configuracao:
     exigir_mesmo_municipio: bool = True
     criterio_de_desempate: CriterioDeDesempate = "ultima"
     regras_do_escore: RegrasDoEscore = field(default_factory=RegrasDoEscore)
-    numero_de_permutacoes: int = 2000
+    numero_de_permutacoes: int = 200
     semente_aleatoria: int = 42
     populacao_da_uf: Optional[int] = None
 
@@ -64,6 +64,19 @@ class Configuracao:
     def colunas_dos_obitos(self) -> tuple[str, ...]:
         return (Bruto.OBITO_SEXO, Bruto.OBITO_NASCIMENTO, Bruto.OBITO_MUNICIPIO, Bruto.OBITO_DATA,
                 Bruto.OBITO_CAUSA, Bruto.OBITO_IDADE, Bruto.OBITO_NUMERO_DA_DECLARACAO)
+
+    @property
+    def colunas_do_download_dos_obitos(self) -> tuple[str, ...]:
+        """As linhas da declaração entram no download, mas não são obrigatórias na limpeza (parquets antigos)."""
+        return self.colunas_dos_obitos + Bruto.OBITO_LINHAS_DA_DECLARACAO
+
+    @property
+    def cids_do_sim(self) -> tuple[str, ...]:
+        """CIDs de interesse + todos os CIDs genéricos do escore; sem isso G30.9, R54, I64 e R99 nunca pontuam.
+        O SIH continua com cids_de_interesse para não inflar o volume de internações por AVC e senilidade."""
+        extras = tuple(cid for cid in self.regras_do_escore.cids_genericos
+                       if not cid.startswith(self.cids_de_interesse))
+        return self.cids_de_interesse + extras
 
     @property
     def colunas_das_internacoes(self) -> tuple[str, ...]:
