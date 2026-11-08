@@ -14,7 +14,8 @@ REGRAS = RegrasDoEscore()
 def criar_pares(dias: int, idade: float, causa: str, data_obito: str = "2020-06-01") -> pd.DataFrame:
     return pd.DataFrame({Col.DIAS_ATE_OBITO: [dias], Col.IDADE_ANOS: [idade], Col.CAUSA_BASICA: [causa],
                          Col.DATA_OBITO: pd.to_datetime([data_obito]),
-                         Col.DATA_INTERNACAO: pd.to_datetime([data_obito]) - pd.Timedelta(days=dias)})
+                         Col.DATA_INTERNACAO: pd.to_datetime([data_obito]) - np.timedelta64(int(dias), "D")
+
 
 
 def test_declinio_rapido_inclui_os_limites_da_janela():

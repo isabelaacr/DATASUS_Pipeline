@@ -8,6 +8,7 @@ casos a revisar manualmente. Regras temporais: óbito >= primeiros sintomas; int
 sintomas menos 30 dias (as mesmas do notebook original)."""
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 
 from dcj.colunas import Bruto, Col
@@ -67,7 +68,7 @@ def manter_obitos_na_janela_de_sobrevida(cruzados_validos: pd.DataFrame,
 
 def manter_internacoes_com_margem(cruzados: pd.DataFrame, margem_em_dias: int) -> pd.DataFrame:
     """A margem absorve erro de preenchimento da data de primeiros sintomas."""
-    limite = cruzados[Col.DATA_PRIMEIROS_SINTOMAS] - pd.Timedelta(days=margem_em_dias)
+    limite = cruzados[Col.DATA_PRIMEIROS_SINTOMAS] - np.timedelta64(int(margem_em_dias), "D")
     return cruzados[cruzados[Col.DATA_INTERNACAO] >= limite]
 
 

@@ -14,8 +14,7 @@ def criar_cruzados(*dias_ate_o_obito: int) -> pd.DataFrame:
     return pd.DataFrame({
         Col.ANO_NASCIMENTO: range(1940, 1940 + len(dias_ate_o_obito)), Col.SEXO: "F", Col.MUNICIPIO: "431490",
         Col.DATA_PRIMEIROS_SINTOMAS: sintomas,
-        Col.DATA_OBITO: [sintomas + pd.Timedelta(days=dias) for dias in dias_ate_o_obito],
-        Col.CAUSA_BASICA: "G311", Col.IDADE_ANOS: 80.0})
+        Col.DATA_OBITO: [sintomas + np.timedelta64(int(dias), "D") for dias in dias_ate_o_obito],        Col.CAUSA_BASICA: "G311", Col.IDADE_ANOS: 80.0})
 
 
 def test_embaralhar_preserva_o_conjunto_de_valores_de_cada_bloco():

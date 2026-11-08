@@ -16,6 +16,15 @@ CODIGO_DO_AGRAVO_DCJ_NO_SINAN = "DCRJ"
 Tentativa = Callable[[], pd.DataFrame]
 ERROS_DE_API_INCOMPATIVEL = (ImportError, AttributeError, TypeError, KeyError, IndexError, ValueError)
 
+# Prefixos IBGE das UFs; usados para filtrar SIM (que baixa consolidado nacional).
+_PREFIXOS_DAS_UFS = {
+    "AC": "12", "AL": "27", "AP": "16", "AM": "13", "BA": "29", "CE": "23",
+    "DF": "53", "ES": "32", "GO": "52", "MA": "21", "MT": "51", "MS": "50",
+    "MG": "31", "PA": "15", "PB": "25", "PR": "41", "PE": "26", "PI": "22",
+    "RJ": "33", "RN": "24", "RS": "43", "RO": "11", "RR": "14", "SC": "42",
+    "SP": "35", "SE": "28", "TO": "17",
+}
+
 
 def versao_do_pysus() -> str:
     try:
@@ -37,7 +46,22 @@ def executar_primeira_tentativa_valida(tentativas: dict[str, Tentativa]) -> pd.D
 def _exigir_tabela(resultado: object) -> pd.DataFrame:
     if not isinstance(resultado, pd.DataFrame):
         raise TypeError(f"esperava DataFrame, veio {type(resultado).__name__}")
+    if resultado.empty:
+        raise ValueError("DataFrame vazio — nada baixado")
     return resultado
+
+
+def _com_colunas_em_maiusculas(tabela: pd.DataFrame) -> pd.DataFrame:
+    """O pipeline usa os nomes do DATASUS em maiúsculas; versões do PySUS podem devolver minúsculas."""
+    return tabela.rename(columns=lambda coluna: str(coluna).strip().upper())
+
+
+def _manter_residentes_da_uf(tabela: pd.DataFrame, sigla_uf: str) -> pd.DataFrame:
+    """SIM 2.x entrega o consolidado nacional; mantém só residentes da UF via CODMUNRES."""
+    prefixo = _PREFIXOS_DAS_UFS.get(sigla_uf)
+    if prefixo is None or "CODMUNRES" not in tabela.columns:
+        return tabela  # mock em teste, ou base que já vem filtrada
+    return tabela[tabela["CODMUNRES"].astype(str).str[:2] == prefixo].reset_index(drop=True)
 
 
 def _importar_pysus() -> ModuleType:
@@ -54,67 +78,37 @@ def _consultar_pelo_cliente(**filtros: object) -> pd.DataFrame:
     return asyncio.run(consultar())
 
 
-# --- TRADUTORES DE COLUNAS (PySUS 2.11+ usa minúsculas e parâmetros diferentes) ---
-def _traduzir_sim(df: pd.DataFrame) -> pd.DataFrame:
-    if df.empty:
-        return df
-    mapa = {"sexo": "SEXO", "dtnasc": "DTNASC", "codmunres": "CODMUNRES", "dtobito": "DTOBITO",
-            "causabas": "CAUSABAS", "idade": "IDADE", "numerodo": "NUMERODO"}
-    df.columns = [mapa.get(c.lower().strip(), c.upper().strip()) for c in df.columns]
-    if "CAUSABAS" in df.columns:
-        df["CAUSABAS"] = df["CAUSABAS"].astype(str).str.strip().str.upper()
-    return df
-
-
-def _traduzir_sih(df: pd.DataFrame) -> pd.DataFrame:
-    if df.empty:
-        return df
-    mapa = {"sexo": "SEXO", "nasc": "NASC", "munic_res": "MUNIC_RES", "dt_inter": "DT_INTER",
-            "diag_princ": "DIAG_PRINC", "diag_secun": "DIAG_SECUN", "n_aih": "N_AIH"}
-    df.columns = [mapa.get(c.lower().strip(), c.upper().strip()) for c in df.columns]
-    return df
-
-
-def _traduzir_sinan(df: pd.DataFrame) -> pd.DataFrame:
-    if df.empty:
-        return df
-    mapa = {"id_agravo": "ID_AGRAVO", "cs_sexo": "CS_SEXO", "id_municip": "ID_MN_RESI", 
-            "id_mn_resi": "ID_MN_RESI", "ano_nasc": "ANO_NASC", "dt_nasc": "DT_NASC",
-            "dt_sin_pri": "DT_SIN_PRI", "dt_notific": "DT_NOTIFIC", 
-            "classi_fin": "CLASSI_FIN", "evolucao": "EVOLUCAO"}
-    df.columns = [mapa.get(c.lower().strip(), c.upper().strip()) for c in df.columns]
-    return df
-
-
 def obter_obitos_do_pysus(sigla_uf: str, ano: int) -> pd.DataFrame:
-    def baixar():
-        return executar_primeira_tentativa_valida({
-            # CORREÇÃO: usamos uf= em vez de state= na API nova do PySUS 2.11+
-            "pysus.ftp.sim": lambda: _importar_pysus().ftp.sim(uf=sigla_uf, year=ano, as_dataframe=True),
+    return _manter_residentes_da_uf(
+        _com_colunas_em_maiusculas(executar_primeira_tentativa_valida({
+            "pysus.ftp.sim (state=)": lambda: _importar_pysus().ftp.sim(
+                state=sigla_uf, year=ano, as_dataframe=True),
+            "pysus.ftp.sim (uf=)": lambda: _importar_pysus().ftp.sim(
+                uf=sigla_uf, year=ano, as_dataframe=True),
             "pysus.sim (legado)": lambda: _importar_pysus().sim(sigla_uf, ano, as_dataframe=True),
-            "PySUS.query": lambda: _consultar_pelo_cliente(dataset="sim", state=sigla_uf, year=ano)})
-    return _traduzir_sim(baixar())
+            "PySUS.query": lambda: _consultar_pelo_cliente(dataset="sim", state=sigla_uf, year=ano)})),
+        sigla_uf,
+    )
 
 
 def obter_internacoes_do_pysus(sigla_uf: str, ano: int, mes: int) -> pd.DataFrame:
-    def baixar():
-        return executar_primeira_tentativa_valida({
-            # CORREÇÃO: usamos uf= em vez de state= na API nova
-            "pysus.ftp.sih": lambda: _importar_pysus().ftp.sih(uf=sigla_uf, year=ano, month=mes, as_dataframe=True),
-            "pysus.sih (legado)": lambda: _importar_pysus().sih(sigla_uf, ano, mes, as_dataframe=True),
-            "PySUS.query": lambda: _consultar_pelo_cliente(dataset="sih", state=sigla_uf, year=ano, month=mes)})
-    return _traduzir_sih(baixar())
+    """SIH 2.x já entrega por UF (arquivos RDRS/SPRS); não precisa filtrar."""
+    return _com_colunas_em_maiusculas(executar_primeira_tentativa_valida({
+        "pysus.ftp.sih (state=)": lambda: _importar_pysus().ftp.sih(
+            state=sigla_uf, year=ano, month=mes, as_dataframe=True),
+        "pysus.ftp.sih (uf=)": lambda: _importar_pysus().ftp.sih(
+            uf=sigla_uf, year=ano, month=mes, as_dataframe=True),
+        "pysus.sih (legado)": lambda: _importar_pysus().sih(sigla_uf, ano, mes, as_dataframe=True),
+        "PySUS.query": lambda: _consultar_pelo_cliente(dataset="sih", state=sigla_uf, year=ano, month=mes)}))
 
 
 def obter_notificacoes_do_pysus(ano: int) -> pd.DataFrame:
     """Arquivo nacional do agravo (DCRJBRAA); o filtro por UF é feito depois."""
     agravo = CODIGO_DO_AGRAVO_DCJ_NO_SINAN
-    def baixar():
-        return executar_primeira_tentativa_valida({
-            "pysus.ftp.sinan": lambda: _importar_pysus().ftp.sinan(disease=agravo, year=ano, as_dataframe=True),
-            "pysus.sinan (legado)": lambda: _importar_pysus().sinan(agravo, ano, as_dataframe=True),
-            "PySUS.query": lambda: _consultar_pelo_cliente(dataset="sinan", group=agravo, year=ano)})
-    return _traduzir_sinan(baixar())
+    return _com_colunas_em_maiusculas(executar_primeira_tentativa_valida({
+        "pysus.ftp.sinan": lambda: _importar_pysus().ftp.sinan(disease=agravo, year=ano, as_dataframe=True),
+        "pysus.sinan (legado)": lambda: _importar_pysus().sinan(agravo, ano, as_dataframe=True),
+        "PySUS.query": lambda: _consultar_pelo_cliente(dataset="sinan", group=agravo, year=ano)}))
 
 
 def descrever_pysus_instalado() -> dict[str, object]:
@@ -135,5 +129,5 @@ def _agravo_dcj_listado_no_pysus() -> str:
         from pysus.api.ftp.databases import SINAN
         definicoes = getattr(SINAN, "group_definitions", None)
         return "sim" if definicoes and CODIGO_DO_AGRAVO_DCJ_NO_SINAN in definicoes else f"não confirmado ({type(definicoes).__name__})"
-    except Exception as erro:
+    except Exception as erro:  ## sonda de diagnóstico: qualquer falha vira texto, nunca derruba o comando.
         return f"não verificável ({type(erro).__name__})"

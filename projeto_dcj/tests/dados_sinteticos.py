@@ -21,14 +21,15 @@ class PessoaSintetica:
 
 
 def sortear_data(gerador: np.random.Generator, inicio: str, dias: int) -> pd.Timestamp:
-    return pd.Timestamp(inicio) + pd.Timedelta(days=int(gerador.integers(0, dias)))
+    return pd.Timestamp(inicio) + np.timedelta64(int(gerador.integers(0, dias, dtype="int64")), "D")
+
 
 
 def sortear_pessoa(gerador: np.random.Generator) -> PessoaSintetica:
     obito = sortear_data(gerador, "2017-03-01", 365 * 5 + 200)
     return PessoaSintetica(
         nascimento=sortear_data(gerador, "1925-01-01", 365 * 65), obito=obito,
-        internacao=obito - pd.Timedelta(days=int(gerador.integers(10, 300))),
+        internacao=obito - np.timedelta64(int(gerador.integers(10, 300, dtype="int64")), "D"),
         municipio=str(gerador.choice(MUNICIPIOS_DO_RS)), sexo=str(gerador.choice(["M", "F"])))
 
 

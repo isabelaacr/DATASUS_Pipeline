@@ -27,8 +27,20 @@ class FalhaDeDownload:
 
 
 def manter_residentes_da_uf(tabela: pd.DataFrame, prefixo_do_codigo_da_uf: str) -> pd.DataFrame:
+    """SINAN: o arquivo nacional é filtrado aqui pela coluna de município da notificação."""
     residentes = tabela[Bruto.NOTIFICACAO_MUNICIPIO].astype("string").str.startswith(prefixo_do_codigo_da_uf, na=False)
     return tabela[residentes]
+
+
+def manter_residentes_do_sim(tabela: pd.DataFrame, prefixo_do_codigo_da_uf: str) -> pd.DataFrame:
+    """SIM 2.x entrega consolidado nacional; mantém só residentes da UF via CODMUNRES.
+
+    Defensivo: se a coluna não existir (mock de teste, base já filtrada pela fonte), devolve intacto.
+    """
+    if "CODMUNRES" not in tabela.columns:
+        return tabela
+    residentes = tabela["CODMUNRES"].astype("string").str[:2] == prefixo_do_codigo_da_uf
+    return tabela[residentes].reset_index(drop=True)
 
 
 def manter_colunas_e_cids_de_interesse(tabela: pd.DataFrame, colunas: tuple[str, ...], colunas_de_cid: list[str],
@@ -44,7 +56,12 @@ def baixar_obitos(configuracao: Configuracao, obter: ObterObitos = obter_obitos_
     falhas: list[FalhaDeDownload] = []
     for ano in configuracao.anos_dos_obitos:
         destino = configuracao.pasta_dos_obitos_brutos / f"sim_{configuracao.sigla_uf.lower()}_{ano}.parquet"
-        _baixar_e_gravar(destino, lambda ano=ano: obter(configuracao.sigla_uf, ano), configuracao.colunas_dos_obitos,
+
+        def _baixar_filtrado(ano: int = ano) -> pd.DataFrame:
+            return manter_residentes_do_sim(obter(configuracao.sigla_uf, ano),
+                                            configuracao.prefixo_do_codigo_da_uf)
+
+        _baixar_e_gravar(destino, _baixar_filtrado, configuracao.colunas_dos_obitos,
                          [Bruto.OBITO_CAUSA], configuracao, falhas, f"SIM {ano}")
     return falhas
 
@@ -86,6 +103,11 @@ def _baixar_e_gravar(destino: Path, baixar: Callable[[], pd.DataFrame], colunas:
     except (OSError, ValueError, KeyError, ConnectionError, ImportError, AttributeError) as erro:
         registro.warning("Falha em %s: %s", descricao, erro)
         falhas.append(FalhaDeDownload(descricao.split()[0], descricao, str(erro)))
+        return
+    # NOVO: parquet vazio NÃO é gravado — garante que nova execução tente de novo
+    if filtrada.empty:
+        registro.warning("%s: 0 registros após filtro — não gravando", descricao)
+        falhas.append(FalhaDeDownload(descricao.split()[0], descricao, "0 registros após filtro"))
         return
     destino.parent.mkdir(parents=True, exist_ok=True)
     filtrada.to_parquet(destino, index=False)
