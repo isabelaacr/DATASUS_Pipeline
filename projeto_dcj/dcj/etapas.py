@@ -1,7 +1,6 @@
 """Orquestração: cada etapa lê entradas, chama funções puras, grava saídas e registra o resultado.
 Nenhuma regra de negócio mora aqui."""
 from __future__ import annotations
-from dcj.captura_recaptura import DuasListas, montar_tabela_de_sensibilidade
 
 import logging
 from typing import Callable, Optional
@@ -26,6 +25,10 @@ from dcj.sinan import (
     resumir_cruzamentos, resumir_perfil_dos_individuos)
 from dcj.permutacao import avaliar_pareamento_contra_o_acaso
 from dcj.permutacao_sinan import avaliar_cruzamento_sinan_contra_o_acaso
+
+# NOVOS IMPORTS ADICIONADOS AQUI
+from dcj.captura_recaptura import montar_tabela_de_sensibilidade
+from dcj.cenarios_de_captura import montar_cenarios_de_captura
 
 registro = logging.getLogger(__name__)
 Etapa = Callable[[Configuracao], None]
@@ -147,19 +150,17 @@ def executar_validacao_sinan(configuracao: Configuracao) -> None:
     permutacao = avaliar_cruzamento_sinan_contra_o_acaso(notificacoes, obitos, configuracao)
     _gravar_resultado(configuracao, "permutacao_sinan", permutacao)
     relatar("PERMUTAÇÃO SINAN x SIM (cruzamento vs acaso)", permutacao)
+    
+    # AQUI FOI APLICADA A ALTERAÇÃO (substituiu o bloco com números fixos)
+    _gravar_captura_recaptura(configuracao, notificacoes, obitos)
 
 
-    listas_todas = DuasListas(total_da_primeira=45, total_da_segunda=44, em_ambas=10)
-    listas_confirmadas = DuasListas(total_da_primeira=28, total_da_segunda=44, em_ambas=8)
+def _gravar_captura_recaptura(configuracao: Configuracao, notificacoes: pd.DataFrame, obitos: pd.DataFrame) -> None:
+    cenarios = montar_cenarios_de_captura(notificacoes, obitos, configuracao)
+    tabela = montar_tabela_de_sensibilidade(cenarios)
+    _gravar_resultado(configuracao, "captura_recaptura_sensibilidade", tabela)
+    relatar("CAPTURA-RECAPTURA (CHAPMAN): análise de sensibilidade, não estimativa populacional", tabela)
 
-    cenarios = {
-        "SINAN todas (45)": listas_todas,
-        "SINAN confirmadas (28)": listas_confirmadas,
-    }
-
-    tabela_chapman = montar_tabela_de_sensibilidade(cenarios)
-    _gravar_resultado(configuracao, "captura_recaptura_sensibilidade", tabela_chapman)
-    relatar("CAPTURA-RECAPTURA (CHAPMAN)", tabela_chapman)
 
 ETAPAS: dict[str, Etapa] = {
     "limpeza": executar_limpeza,

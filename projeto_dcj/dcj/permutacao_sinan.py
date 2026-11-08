@@ -7,6 +7,8 @@ por construção. O que discrimina é a coerência temporal: um vínculo real te
 uma colisão tem data de óbito arbitrária."""
 from __future__ import annotations
 
+from typing import Callable
+
 import numpy as np
 import pandas as pd
 
@@ -43,12 +45,13 @@ def preparar_obitos_para_o_sorteio(obitos: pd.DataFrame) -> pd.DataFrame:
     return obitos[colunas].dropna(subset=BLOCO_DO_EMBARALHAMENTO + [Col.ANO_NASCIMENTO]).reset_index(drop=True)
 
 
-def simular_cruzamentos_ao_acaso(notificacoes: pd.DataFrame, obitos: pd.DataFrame,
-                                 configuracao: Configuracao) -> np.ndarray:
+def simular_cruzamentos_ao_acaso(notificacoes: pd.DataFrame, obitos: pd.DataFrame, configuracao: Configuracao,
+                                 contador: Callable[[pd.DataFrame, pd.DataFrame], tuple[int, ...]]
+                                 = contar_etapas_do_cruzamento) -> np.ndarray:
     gerador = np.random.default_rng(configuracao.semente_aleatoria)
     identificador = obitos.groupby(BLOCO_DO_EMBARALHAMENTO, sort=False).ngroup().to_numpy()
     anos = obitos[Col.ANO_NASCIMENTO].to_numpy()
-    contagens = [contar_etapas_do_cruzamento(
+    contagens = [contador(
         notificacoes, obitos.assign(**{Col.ANO_NASCIMENTO: embaralhar_dentro_do_bloco(anos, identificador, gerador)}))
         for _ in range(configuracao.numero_de_permutacoes)]
     return np.array(contagens)

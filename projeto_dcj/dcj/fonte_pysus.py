@@ -80,10 +80,11 @@ def _consultar_pelo_cliente(**filtros: object) -> pd.DataFrame:
 
 def obter_obitos_do_pysus(sigla_uf: str, ano: int) -> pd.DataFrame:
     tabela = executar_primeira_tentativa_valida({
-        "pysus.ftp.sim (state=)": lambda: _importar_pysus().ftp.sim(
-            state=sigla_uf, year=ano, as_dataframe=True),
+        # INVERTIDO: uf primeiro, state depois
         "pysus.ftp.sim (uf=)": lambda: _importar_pysus().ftp.sim(
             uf=sigla_uf, year=ano, as_dataframe=True),
+        "pysus.ftp.sim (state=)": lambda: _importar_pysus().ftp.sim(
+            state=sigla_uf, year=ano, as_dataframe=True),
         "pysus.sim (legado)": lambda: _importar_pysus().sim(sigla_uf, ano, as_dataframe=True),
         "PySUS.query": lambda: _consultar_pelo_cliente(dataset="sim", state=sigla_uf, year=ano)})
     
@@ -96,13 +97,13 @@ def obter_obitos_do_pysus(sigla_uf: str, ano: int) -> pd.DataFrame:
 def obter_internacoes_do_pysus(sigla_uf: str, ano: int, mes: int) -> pd.DataFrame:
     """SIH 2.x já entrega por UF (arquivos RDRS/SPRS); não precisa filtrar."""
     return _com_colunas_em_maiusculas(executar_primeira_tentativa_valida({
-        "pysus.ftp.sih (state=)": lambda: _importar_pysus().ftp.sih(
-            state=sigla_uf, year=ano, month=mes, as_dataframe=True),
+        # INVERTIDO: uf primeiro, state depois
         "pysus.ftp.sih (uf=)": lambda: _importar_pysus().ftp.sih(
             uf=sigla_uf, year=ano, month=mes, as_dataframe=True),
+        "pysus.ftp.sih (state=)": lambda: _importar_pysus().ftp.sih(
+            state=sigla_uf, year=ano, month=mes, as_dataframe=True),
         "pysus.sih (legado)": lambda: _importar_pysus().sih(sigla_uf, ano, mes, as_dataframe=True),
         "PySUS.query": lambda: _consultar_pelo_cliente(dataset="sih", state=sigla_uf, year=ano, month=mes)}))
-
 
 def obter_notificacoes_do_pysus(ano: int) -> pd.DataFrame:
     """Arquivo nacional do agravo (DCRJBRAA); o filtro por UF é feito depois."""

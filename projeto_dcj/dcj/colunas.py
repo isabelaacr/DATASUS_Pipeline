@@ -31,7 +31,7 @@ class Bruto:
     NOTIFICACAO_DATA = "DT_NOTIFIC"
     NOTIFICACAO_CLASSIFICACAO_FINAL = "CLASSI_FIN"
     NOTIFICACAO_EVOLUCAO = "EVOLUCAO"
-    NOTIFICACAO_OBITO: str = "DT_OBITO"
+    NOTIFICACAO_OBITO = "DT_OBITO"
 
 
 class Col:
@@ -45,6 +45,12 @@ class Col:
     IDADE_ANOS = "idade_anos"
     CAUSA_BASICA = "causa_basica"
     DATA_OBITO = "data_obito"
+    
+    # --- NOVAS COLUNAS ADICIONADAS AQUI ---
+    DATA_OBITO_NOTIFICADA = "data_obito_notificada"
+    CLASSIFICACAO_FINAL = "classificacao_final"
+    # --------------------------------------
+
     DATA_INTERNACAO = "data_internacao"
     DIAGNOSTICO_PRINCIPAL = "diagnostico_principal"
     ID_OBITO = "id_obito"

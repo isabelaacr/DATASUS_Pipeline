@@ -69,3 +69,22 @@ def test_etapa_sinan_gera_resumo_e_pares_validos(configuracao):
     executar_sinan(configuracao)
     resumo = pd.read_csv(configuracao.arquivo_de_resultado("sinan_resumo"), index_col=0)["valor"]
     assert resumo["sinan_x_sim_validos"] == 1 and resumo["sinan_x_sih_validos"] == 1
+
+
+def test_preparar_notificacoes_descarta_residentes_de_outras_ufs(configuracao):
+    nacional = pd.concat([criar_notificacoes_brutas(), criar_notificacoes_brutas().assign(ID_MN_RESI="355030")],
+                         ignore_index=True)
+    preparadas = preparar_notificacoes(nacional, configuracao)
+    assert preparadas[Col.MUNICIPIO].tolist() == ["431490"]
+
+
+def test_preparar_notificacoes_leva_data_de_obito_e_classificacao_final(configuracao):
+    brutas = criar_notificacoes_brutas().assign(DT_OBITO=["2020-05-01"], CLASSI_FIN=["1 "])
+    preparadas = preparar_notificacoes(brutas, configuracao)
+    assert preparadas.loc[0, Col.DATA_OBITO_NOTIFICADA] == pd.Timestamp("2020-05-01")
+    assert preparadas.loc[0, Col.CLASSIFICACAO_FINAL] == "1"
+
+
+def test_preparar_notificacoes_sem_colunas_opcionais_deixa_data_ausente(configuracao):
+    preparadas = preparar_notificacoes(criar_notificacoes_brutas(), configuracao)
+    assert preparadas[Col.DATA_OBITO_NOTIFICADA].isna().all() and preparadas[Col.CLASSIFICACAO_FINAL].isna().all()

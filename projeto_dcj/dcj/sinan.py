@@ -8,7 +8,6 @@ casos a revisar manualmente. Regras temporais: óbito >= primeiros sintomas; int
 sintomas menos 30 dias (as mesmas do notebook original)."""
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 
 from dcj.colunas import Bruto, Col
@@ -33,6 +32,19 @@ def extrair_ano_de_nascimento(notificacoes: pd.DataFrame) -> pd.Series:
     return pd.to_datetime(notificacoes[Bruto.NOTIFICACAO_NASCIMENTO], errors="coerce").dt.year
 
 
+def extrair_data_do_obito_notificada(notificacoes: pd.DataFrame) -> pd.Series:
+    """Só 18 das 45 notificações do RS (2017-2022) trazem a data; ausência não significa que o paciente sobreviveu."""
+    if Bruto.NOTIFICACAO_OBITO not in notificacoes.columns:
+        return pd.Series(pd.NaT, index=notificacoes.index, dtype="datetime64[ns]")
+    return pd.to_datetime(notificacoes[Bruto.NOTIFICACAO_OBITO], errors="coerce")
+
+
+def extrair_classificacao_final(notificacoes: pd.DataFrame) -> pd.Series:
+    if Bruto.NOTIFICACAO_CLASSIFICACAO_FINAL not in notificacoes.columns:
+        return pd.Series(pd.NA, index=notificacoes.index, dtype="string")
+    return limpar_texto_numerico(notificacoes[Bruto.NOTIFICACAO_CLASSIFICACAO_FINAL])
+
+
 def montar_chaves_do_sinan(notificacoes: pd.DataFrame, configuracao: Configuracao) -> pd.DataFrame:
     digitos = configuracao.digitos_do_municipio
     municipios = limpar_texto_numerico(notificacoes[Bruto.NOTIFICACAO_MUNICIPIO]).str.zfill(digitos).str[:digitos]
@@ -47,8 +59,16 @@ def preparar_notificacoes(notificacoes: pd.DataFrame, configuracao: Configuracao
     garantir_colunas(notificacoes, [Bruto.NOTIFICACAO_SEXO, Bruto.NOTIFICACAO_MUNICIPIO, COLUNA_DE_SINTOMAS], "SINAN")
     com_indice_unico = notificacoes.reset_index(drop=True)
     preparadas = montar_chaves_do_sinan(com_indice_unico, configuracao).assign(
-        **{Col.DATA_PRIMEIROS_SINTOMAS: pd.to_datetime(com_indice_unico[COLUNA_DE_SINTOMAS], errors="coerce")})
-    return preparadas.dropna(subset=[Col.DATA_PRIMEIROS_SINTOMAS]).reset_index(drop=True)
+        **{Col.DATA_PRIMEIROS_SINTOMAS: pd.to_datetime(com_indice_unico[COLUNA_DE_SINTOMAS], errors="coerce"),
+           Col.DATA_OBITO_NOTIFICADA: extrair_data_do_obito_notificada(com_indice_unico),
+           Col.CLASSIFICACAO_FINAL: extrair_classificacao_final(com_indice_unico)})
+    com_sintomas = preparadas.dropna(subset=[Col.DATA_PRIMEIROS_SINTOMAS])
+    return manter_residentes_da_uf(com_sintomas, configuracao).reset_index(drop=True)
+
+
+def manter_residentes_da_uf(notificacoes: pd.DataFrame, configuracao: Configuracao) -> pd.DataFrame:
+    """O arquivo do SINAN é nacional: sem este filtro a permutação embaralharia notificações de outras UFs."""
+    return notificacoes[notificacoes[Col.MUNICIPIO].str.startswith(configuracao.prefixo_do_codigo_da_uf)]
 
 
 def cruzar_por_chave(notificacoes: pd.DataFrame, outra_base: pd.DataFrame, colunas_da_outra_base: list[str]) -> pd.DataFrame:
@@ -68,7 +88,7 @@ def manter_obitos_na_janela_de_sobrevida(cruzados_validos: pd.DataFrame,
 
 def manter_internacoes_com_margem(cruzados: pd.DataFrame, margem_em_dias: int) -> pd.DataFrame:
     """A margem absorve erro de preenchimento da data de primeiros sintomas."""
-    limite = cruzados[Col.DATA_PRIMEIROS_SINTOMAS] - np.timedelta64(int(margem_em_dias), "D")
+    limite = cruzados[Col.DATA_PRIMEIROS_SINTOMAS] - pd.Timedelta(margem_em_dias, unit="D")
     return cruzados[cruzados[Col.DATA_INTERNACAO] >= limite]
 
 

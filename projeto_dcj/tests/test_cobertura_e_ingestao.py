@@ -85,7 +85,7 @@ def test_obitos_usam_a_interface_por_namespace_do_pysus(monkeypatch):
     namespace = types.SimpleNamespace(sim=lambda **filtros: chamadas.append(filtros) or pd.DataFrame({"x": [1]}))
     monkeypatch.setitem(sys.modules, "pysus", types.SimpleNamespace(ftp=namespace))
     assert len(obter_obitos_do_pysus("RS", 2019)) == 1
-    assert chamadas == [{"state": "RS", "year": 2019, "as_dataframe": True}]
+    assert chamadas == [{"uf": "RS", "year": 2019, "as_dataframe": True}]
 
 
 def test_internacoes_caem_para_a_funcao_legada_quando_o_namespace_nao_existe(monkeypatch):
@@ -102,3 +102,14 @@ def test_resultado_que_nao_e_tabela_conta_como_api_incompativel():
     from dcj.fonte_pysus import executar_primeira_tentativa_valida
     with pytest.raises(ValueError, match="TypeError"):
         executar_primeira_tentativa_valida({"a": lambda: ["caminho.parquet"]})
+
+
+def test_namespace_do_pysus_aceita_uf_ou_state(monkeypatch):
+    import sys
+    import types
+    from dcj.fonte_pysus import obter_obitos_do_pysus
+
+    def sim_so_com_uf(uf: str, year: int, as_dataframe: bool) -> pd.DataFrame:
+        return pd.DataFrame({"SEXO": [uf]})
+    monkeypatch.setitem(sys.modules, "pysus", types.SimpleNamespace(ftp=types.SimpleNamespace(sim=sim_so_com_uf)))
+    assert obter_obitos_do_pysus("RS", 2019)["SEXO"].tolist() == ["RS"]
