@@ -9,6 +9,9 @@ from dcj.colunas import Col
 from dcj.configuracao import Configuracao, CriterioDeDesempate
 from dcj.erros import garantir_colunas
 
+# NOVO: janela máxima entre internação e óbito (alinhada à literatura clínica e ao SINAN)
+JANELA_MAXIMA_ENTRE_INTERNACAO_E_OBITO_EM_DIAS = 365
+
 
 @dataclass(frozen=True)
 class ResultadoDoPareamento:
@@ -38,8 +41,15 @@ def encontrar_candidatos(internacoes: pd.DataFrame, obitos: pd.DataFrame, chave:
     return internacoes[colunas_da_internacao].merge(obitos[colunas_do_obito], on=chave, how="inner")
 
 
-def manter_internacoes_antes_do_obito(pares: pd.DataFrame) -> pd.DataFrame:
-    return pares[pares[Col.DATA_INTERNACAO] <= pares[Col.DATA_OBITO]]
+def manter_internacoes_antes_do_obito(pares: pd.DataFrame,
+                                      janela_em_dias: int = JANELA_MAXIMA_ENTRE_INTERNACAO_E_OBITO_EM_DIAS) -> pd.DataFrame:
+    """Mantém apenas pares onde o óbito ocorreu entre 0 e 365 dias após a internação.
+    
+    A janela de 1 ano é clinicamente plausível para a DCJ (sobrevida média de 5 meses)
+    e está alinhada com a regra usada no cruzamento com o SINAN.
+    """
+    dias = (pares[Col.DATA_OBITO] - pares[Col.DATA_INTERNACAO]).dt.days
+    return pares[dias.between(0, janela_em_dias)]
 
 
 def manter_um_para_um(pares: pd.DataFrame, criterio_de_desempate: CriterioDeDesempate) -> pd.DataFrame:
@@ -59,6 +69,7 @@ def parear(internacoes: pd.DataFrame, obitos: pd.DataFrame, configuracao: Config
     garantir_colunas(obitos, chave + [Col.DATA_OBITO, Col.CAUSA_BASICA, Col.IDADE_ANOS], "óbitos limpos")
     candidatos = encontrar_candidatos(preparar_lado(internacoes, chave, Col.ID_INTERNACAO),
                                       preparar_lado(obitos, chave, Col.ID_OBITO), chave)
+    # ALTERADO: agora usa a janela de 365 dias em vez de apenas "antes do óbito"
     validos = manter_internacoes_antes_do_obito(candidatos)
     unicos = manter_um_para_um(validos, configuracao.criterio_de_desempate)
     pares = adicionar_dias_ate_o_obito(unicos.sort_values(Col.DATA_INTERNACAO).reset_index(drop=True))

@@ -6,14 +6,15 @@ import pandas as pd
 
 from dcj.colunas import Col
 from dcj.configuracao import Configuracao
-from dcj.pareamento import adicionar_dias_ate_o_obito, manter_um_para_um, preparar_lado
+from dcj.pareamento import (
+    adicionar_dias_ate_o_obito, manter_internacoes_antes_do_obito, manter_um_para_um, preparar_lado)
 
 ETAPAS_DO_PAREAMENTO = ("bloco + dia/mês iguais", "+ internação <= óbito", "+ 1:1 (pares finais)")
 BLOCO_DO_EMBARALHAMENTO = [Col.MUNICIPIO, Col.SEXO]
 
 
 def contar_etapas_do_pareamento(candidatos: pd.DataFrame, configuracao: Configuracao) -> tuple[int, int, int]:
-    validos = candidatos[candidatos[Col.DATA_INTERNACAO] <= candidatos[Col.DATA_OBITO]]
+    validos = manter_internacoes_antes_do_obito(candidatos)
     unicos = manter_um_para_um(validos, configuracao.criterio_de_desempate)
     return len(candidatos), len(validos), len(unicos)
 
