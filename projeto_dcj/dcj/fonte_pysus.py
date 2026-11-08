@@ -79,16 +79,18 @@ def _consultar_pelo_cliente(**filtros: object) -> pd.DataFrame:
 
 
 def obter_obitos_do_pysus(sigla_uf: str, ano: int) -> pd.DataFrame:
-    return _manter_residentes_da_uf(
-        _com_colunas_em_maiusculas(executar_primeira_tentativa_valida({
-            "pysus.ftp.sim (state=)": lambda: _importar_pysus().ftp.sim(
-                state=sigla_uf, year=ano, as_dataframe=True),
-            "pysus.ftp.sim (uf=)": lambda: _importar_pysus().ftp.sim(
-                uf=sigla_uf, year=ano, as_dataframe=True),
-            "pysus.sim (legado)": lambda: _importar_pysus().sim(sigla_uf, ano, as_dataframe=True),
-            "PySUS.query": lambda: _consultar_pelo_cliente(dataset="sim", state=sigla_uf, year=ano)})),
-        sigla_uf,
-    )
+    tabela = executar_primeira_tentativa_valida({
+        "pysus.ftp.sim (state=)": lambda: _importar_pysus().ftp.sim(
+            state=sigla_uf, year=ano, as_dataframe=True),
+        "pysus.ftp.sim (uf=)": lambda: _importar_pysus().ftp.sim(
+            uf=sigla_uf, year=ano, as_dataframe=True),
+        "pysus.sim (legado)": lambda: _importar_pysus().sim(sigla_uf, ano, as_dataframe=True),
+        "PySUS.query": lambda: _consultar_pelo_cliente(dataset="sim", state=sigla_uf, year=ano)})
+    
+    if tabela is None:
+        raise ValueError("PySUS retornou None em vez de DataFrame")
+
+    return _manter_residentes_da_uf(_com_colunas_em_maiusculas(tabela), sigla_uf)
 
 
 def obter_internacoes_do_pysus(sigla_uf: str, ano: int, mes: int) -> pd.DataFrame:

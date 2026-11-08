@@ -33,12 +33,8 @@ def manter_residentes_da_uf(tabela: pd.DataFrame, prefixo_do_codigo_da_uf: str) 
 
 
 def manter_residentes_do_sim(tabela: pd.DataFrame, prefixo_do_codigo_da_uf: str) -> pd.DataFrame:
-    """SIM 2.x entrega consolidado nacional; mantém só residentes da UF via CODMUNRES.
-
-    Defensivo: se a coluna não existir (mock de teste, base já filtrada pela fonte), devolve intacto.
-    """
     if "CODMUNRES" not in tabela.columns:
-        return tabela
+        raise KeyError("CODMUNRES ausente. Colunas disponíveis: " + ", ".join(tabela.columns))
     residentes = tabela["CODMUNRES"].astype("string").str[:2] == prefixo_do_codigo_da_uf
     return tabela[residentes].reset_index(drop=True)
 
