@@ -28,8 +28,13 @@ class FalhaDeDownload:
 
 def manter_residentes_da_uf(tabela: pd.DataFrame, prefixo_do_codigo_da_uf: str) -> pd.DataFrame:
     """SINAN: o arquivo nacional é filtrado aqui pela coluna de município da notificação."""
-    residentes = tabela[Bruto.NOTIFICACAO_MUNICIPIO].astype("string").str.startswith(prefixo_do_codigo_da_uf, na=False)
-    return tabela[residentes]
+    # Tenta achar a coluna de município em vários nomes possíveis
+    coluna = next((c for c in ["ID_MN_RESI", "MUNICIPIO", "CODMUNRES", Bruto.NOTIFICACAO_MUNICIPIO] if c in tabela.columns), None)
+    if coluna is None:
+        raise KeyError(f"Coluna de município não encontrada. Colunas: {tabela.columns.tolist()}")
+    
+    residentes = tabela[coluna].astype("string").str.replace(r"\.0$", "", regex=True).str.startswith(prefixo_do_codigo_da_uf, na=False)
+    return tabela[residentes].reset_index(drop=True)
 
 
 def manter_residentes_do_sim(tabela: pd.DataFrame, prefixo_do_codigo_da_uf: str) -> pd.DataFrame:
