@@ -1,4 +1,4 @@
-pandas>=2.2
+pysus==2.11.7
 numpy
 pyarrow
 scipy

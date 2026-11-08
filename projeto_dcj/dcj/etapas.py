@@ -24,9 +24,12 @@ from dcj.sinan import (
     manter_obitos_na_janela_de_sobrevida, preparar_notificacoes,
     resumir_cruzamentos, resumir_perfil_dos_individuos)
 from dcj.permutacao import avaliar_pareamento_contra_o_acaso
-from dcj.permutacao_sinan import avaliar_cruzamento_sinan_contra_o_acaso
+# IMPORTS DA PERMUTAÇÃO ATUALIZADOS
+from dcj.permutacao_sinan import (
+    avaliar_cruzamento_sinan_contra_o_acaso,
+    avaliar_cruzamento_sinan_contra_o_acaso_apenas_a810
+)
 
-# NOVOS IMPORTS ADICIONADOS AQUI
 from dcj.captura_recaptura import montar_tabela_de_sensibilidade
 from dcj.cenarios_de_captura import montar_cenarios_de_captura
 
@@ -147,11 +150,13 @@ def executar_validacao_sinan(configuracao: Configuracao) -> None:
         return
     obitos, _ = _ler_limpos(configuracao)
     notificacoes = leitura[1]
-    permutacao = avaliar_cruzamento_sinan_contra_o_acaso(notificacoes, obitos, configuracao)
-    _gravar_resultado(configuracao, "permutacao_sinan", permutacao)
-    relatar("PERMUTAÇÃO SINAN x SIM (cruzamento vs acaso)", permutacao)
     
-    # AQUI FOI APLICADA A ALTERAÇÃO (substituiu o bloco com números fixos)
+    # CORREÇÃO AQUI: Chamada restrita aos óbitos A810
+    permutacao = avaliar_cruzamento_sinan_contra_o_acaso_apenas_a810(notificacoes, obitos, configuracao)
+    
+    _gravar_resultado(configuracao, "permutacao_sinan", permutacao)
+    relatar("PERMUTAÇÃO SINAN x SIM (cruzamento vs acaso - A810)", permutacao)
+    
     _gravar_captura_recaptura(configuracao, notificacoes, obitos)
 
 

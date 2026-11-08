@@ -82,3 +82,13 @@ def avaliar_pareamento_contra_o_acaso(internacoes: pd.DataFrame, obitos: pd.Data
     candidatos = montar_candidatos_do_bloco(internacoes, obitos, configuracao.exigir_mesmo_municipio)
     observado = contar_etapas(candidatos, candidatos.dia_e_mes_das_internacoes, configuracao.criterio_de_desempate)
     return resumir_permutacao(observado, simular_contagens_ao_acaso(candidatos, configuracao))
+
+def avaliar_cruzamento_sinan_contra_o_acaso_apenas_a810(
+    notificacoes: pd.DataFrame, obitos: pd.DataFrame, configuracao: Configuracao
+) -> pd.DataFrame:
+    """Versão corrigida: restringe a permutação aos óbitos A810."""
+    obitos_a810 = obitos[obitos[Col.CAUSA_BASICA].str.startswith("A81", na=False)].copy()
+    sorteaveis = preparar_obitos_para_o_sorteio(obitos_a810)
+    observado = contar_etapas_do_cruzamento(notificacoes, sorteaveis)
+    simuladas = simular_cruzamentos_ao_acaso(notificacoes, sorteaveis, configuracao)
+    return resumir_permutacao(observado, simuladas, ETAPAS_DO_SINAN)
