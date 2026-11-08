@@ -1,6 +1,7 @@
 """Orquestração: cada etapa lê entradas, chama funções puras, grava saídas e registra o resultado.
 Nenhuma regra de negócio mora aqui."""
 from __future__ import annotations
+from dcj.captura_recaptura import DuasListas, montar_tabela_de_sensibilidade
 
 import logging
 from typing import Callable, Optional
@@ -147,6 +148,18 @@ def executar_validacao_sinan(configuracao: Configuracao) -> None:
     _gravar_resultado(configuracao, "permutacao_sinan", permutacao)
     relatar("PERMUTAÇÃO SINAN x SIM (cruzamento vs acaso)", permutacao)
 
+
+    listas_todas = DuasListas(total_da_primeira=45, total_da_segunda=44, em_ambas=10)
+    listas_confirmadas = DuasListas(total_da_primeira=28, total_da_segunda=44, em_ambas=8)
+
+    cenarios = {
+        "SINAN todas (45)": listas_todas,
+        "SINAN confirmadas (28)": listas_confirmadas,
+    }
+
+    tabela_chapman = montar_tabela_de_sensibilidade(cenarios)
+    _gravar_resultado(configuracao, "captura_recaptura_sensibilidade", tabela_chapman)
+    relatar("CAPTURA-RECAPTURA (CHAPMAN)", tabela_chapman)
 
 ETAPAS: dict[str, Etapa] = {
     "limpeza": executar_limpeza,
