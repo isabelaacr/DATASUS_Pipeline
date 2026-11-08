@@ -85,8 +85,7 @@ def test_obitos_usam_a_interface_por_namespace_do_pysus(monkeypatch):
     namespace = types.SimpleNamespace(sim=lambda **filtros: chamadas.append(filtros) or pd.DataFrame({"x": [1]}))
     monkeypatch.setitem(sys.modules, "pysus", types.SimpleNamespace(ftp=namespace))
     assert len(obter_obitos_do_pysus("RS", 2019)) == 1
-    assert chamadas == [{"uf": "RS", "year": 2019, "as_dataframe": True}]
-
+    assert chamadas == [{"state": "RS", "year": 2019, "as_dataframe": True}]
 
 def test_internacoes_caem_para_a_funcao_legada_quando_o_namespace_nao_existe(monkeypatch):
     import sys
