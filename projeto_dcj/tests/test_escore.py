@@ -12,9 +12,17 @@ REGRAS = RegrasDoEscore()
 
 
 def criar_pares(dias: int, idade: float, causa: str, data_obito: str = "2020-06-01") -> pd.DataFrame:
-    return pd.DataFrame({Col.DIAS_ATE_OBITO: [dias], Col.IDADE_ANOS: [idade], Col.CAUSA_BASICA: [causa],
-                         Col.DATA_OBITO: pd.to_datetime([data_obito]),
-                         Col.DATA_INTERNACAO: pd.to_datetime([data_obito]) - np.timedelta64(int(dias), "D")
+    # Converte a data do óbito e calcula a data de internação usando Timedelta válido
+    dt_obito = pd.to_datetime(data_obito)
+    dt_internacao = dt_obito - pd.to_timedelta(int(dias), unit="D")
+
+    return pd.DataFrame({
+        Col.DIAS_ATE_OBITO: [dias],
+        Col.IDADE_ANOS: [idade],
+        Col.CAUSA_BASICA: [causa],
+        Col.DATA_OBITO: [dt_obito],
+        Col.DATA_INTERNACAO: [dt_internacao]
+    })
 
 
 
