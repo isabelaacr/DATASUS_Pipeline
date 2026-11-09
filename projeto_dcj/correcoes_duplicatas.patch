@@ -1,0 +1,426 @@
+diff --git a/dcj/configuracao.py b/dcj/configuracao.py
+index e10ed58..319b722 100644
+--- a/dcj/configuracao.py
++++ b/dcj/configuracao.py
+@@ -40,7 +40,7 @@ class Configuracao:
+     exigir_mesmo_municipio: bool = True
+     criterio_de_desempate: CriterioDeDesempate = "ultima"
+     regras_do_escore: RegrasDoEscore = field(default_factory=RegrasDoEscore)
+-    numero_de_permutacoes: int = 200
++    numero_de_permutacoes: int = 2000
+     semente_aleatoria: int = 42
+     populacao_da_uf: Optional[int] = None
+ 
+diff --git a/dcj/etapas.py b/dcj/etapas.py
+index cdec12d..df30acb 100644
+--- a/dcj/etapas.py
++++ b/dcj/etapas.py
+@@ -73,7 +73,16 @@ def executar_pareamento(configuracao: Configuracao) -> None:
+     relatar("PAREAMENTO", resumo)
+ 
+ 
++def avisar_se_o_declinio_nao_diferencia(configuracao: Configuracao) -> None:
++    from dcj.pareamento import JANELA_MAXIMA_ENTRE_INTERNACAO_E_OBITO_EM_DIAS as JANELA_DO_PAREAMENTO
++    if configuracao.regras_do_escore.janela_do_declinio_em_dias[1] >= JANELA_DO_PAREAMENTO:
++        registro.warning("A janela do declínio (%s dias) cobre toda a janela do pareamento (%s dias): todo par recebe "
++                         "os pontos de declínio, e a sinalização depende só da idade e do CID.",
++                         configuracao.regras_do_escore.janela_do_declinio_em_dias, JANELA_DO_PAREAMENTO)
++
++
+ def executar_escore(configuracao: Configuracao) -> None:
++    avisar_se_o_declinio_nao_diferencia(configuracao)
+     obitos, internacoes = _ler_limpos(configuracao)
+     pares = disco.ler_parquet_da_etapa_anterior(configuracao.arquivo_processado("pares_finais"), "pareamento")
+     pontuados = calcular_escore(pares, configuracao)
+diff --git a/dcj/fonte_pysus.py b/dcj/fonte_pysus.py
+index 3c3e82c..5bf95a3 100644
+--- a/dcj/fonte_pysus.py
++++ b/dcj/fonte_pysus.py
+@@ -10,16 +10,21 @@ from importlib import metadata
+ from types import ModuleType
+ from typing import Callable
+ 
+-import httpx
+ import pandas as pd
+ 
++try:  # o PySUS novo usa httpx; sem ele, o pacote ainda carrega (testes, limpeza, análise)
++    import httpx
++    _ERROS_HTTP: tuple[type[BaseException], ...] = (httpx.HTTPError,)
++except ImportError:
++    _ERROS_HTTP = ()
++
+ CODIGO_DO_AGRAVO_DCJ_NO_SINAN = "DCRJ"
+ Tentativa = Callable[[], pd.DataFrame]
+ 
+ # Adicionamos httpx.HTTPError, OSError e ConnectionError para capturar o timeout da API nova.
+ ERROS_DE_API_INCOMPATIVEL = (
+     ImportError, AttributeError, TypeError, KeyError, IndexError, ValueError,
+-    httpx.HTTPError, OSError, ConnectionError
++    *_ERROS_HTTP, OSError, ConnectionError
+ )
+ 
+ # Prefixos IBGE das UFs; usados para filtrar SIM (que baixa consolidado nacional).
+diff --git a/dcj/limpeza.py b/dcj/limpeza.py
+index 42f75f3..dde93b8 100644
+--- a/dcj/limpeza.py
++++ b/dcj/limpeza.py
+@@ -13,7 +13,7 @@ from dcj.erros import garantir_colunas
+ from dcj.funil import Funil
+ from dcj.padronizacao import (
+     MAPA_SEXO_DAS_INTERNACOES, MAPA_SEXO_DOS_OBITOS, converter_data_aaaammdd, converter_data_ddmmaaaa,
+-    decodificar_idade_em_anos, padronizar_cid, padronizar_codigo_municipio, padronizar_sexo)
++    decodificar_idade_em_anos, limpar_texto_numerico, padronizar_cid, padronizar_codigo_municipio, padronizar_sexo)
+ 
+ ResultadoDaLimpeza = tuple[pd.DataFrame, pd.DataFrame]
+ 
+@@ -22,8 +22,68 @@ def filtrar_residentes_da_uf(tabela: pd.DataFrame, coluna_do_municipio: str, pre
+     return tabela[tabela[coluna_do_municipio].str.startswith(prefixo_da_uf, na=False)]
+ 
+ 
+-def remover_duplicatas(tabela: pd.DataFrame, colunas: Sequence[str]) -> pd.DataFrame:
+-    return tabela.drop_duplicates(subset=list(colunas))
++def normalizar_identificador(valores: pd.Series) -> pd.Series:
++    """NUMERODO / N_AIH sem espaços nem sufixo '.0'; se for só dígitos, também sem zeros à esquerda. Vazio vira NA."""
++    texto = limpar_texto_numerico(valores).str.replace(r"\s", "", regex=True).str.upper()
++    so_digitos = texto.str.fullmatch(r"\d+", na=False)
++    texto = texto.mask(so_digitos, texto.str.lstrip("0"))
++    return texto.mask(texto.isna() | (texto == ""))
++
++
++def marcar_duplicatas(chave_demografica: pd.DataFrame, identificador: pd.Series) -> pd.Series:
++    """True para as linhas a remover.
++
++    - Com identificador (NUMERODO, N_AIH): duplicata = mesmo identificador de uma linha anterior.
++    - Sem identificador: duplicata = mesma chave demográfica normalizada de uma linha com identificador
++      ou de uma linha anterior também sem identificador.
++    A chave é comparada DEPOIS de normalizada (datas convertidas, CID e sexo padronizados): a mesma declaração
++    vinda de dois arquivos (estadual e consolidado nacional) pode ter formatos diferentes nos campos brutos."""
++    tem_id = identificador.notna()
++    repetido_pelo_id = tem_id & identificador.duplicated(keep="first")
++    tuplas = pd.Series(list(chave_demografica.astype("string").fillna("<NA>").itertuples(index=False, name=None)),
++                       index=chave_demografica.index)
++    chaves_com_id = set(tuplas[tem_id])
++    sem_id = ~tem_id
++    repetido_sem_id = pd.Series(False, index=chave_demografica.index)
++    repetido_sem_id[sem_id] = tuplas[sem_id].isin(chaves_com_id) | tuplas[sem_id].duplicated(keep="first")
++    return repetido_pelo_id | repetido_sem_id
++
++
++def chave_dos_obitos(tabela: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
++    chave = pd.DataFrame({
++        "municipio": tabela[Bruto.OBITO_MUNICIPIO],
++        "sexo": padronizar_sexo(tabela[Bruto.OBITO_SEXO], MAPA_SEXO_DOS_OBITOS),
++        "nascimento": converter_data_ddmmaaaa(tabela[Bruto.OBITO_NASCIMENTO]),
++        "obito": converter_data_ddmmaaaa(tabela[Bruto.OBITO_DATA]),
++        "causa": padronizar_cid(tabela[Bruto.OBITO_CAUSA]),
++        "idade": decodificar_idade_em_anos(tabela[Bruto.OBITO_IDADE]),
++    }, index=tabela.index)
++    numero = Bruto.OBITO_NUMERO_DA_DECLARACAO
++    identificador = (normalizar_identificador(tabela[numero]) if numero in tabela.columns
++                     else pd.Series(pd.NA, index=tabela.index, dtype="string"))
++    return chave, identificador
++
++
++def chave_das_internacoes(tabela: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
++    chave = pd.DataFrame({
++        "municipio": tabela[Bruto.INTERNACAO_MUNICIPIO],
++        "sexo": padronizar_sexo(tabela[Bruto.INTERNACAO_SEXO], MAPA_SEXO_DAS_INTERNACOES),
++        "nascimento": converter_data_aaaammdd(tabela[Bruto.INTERNACAO_NASCIMENTO]),
++        "internacao": converter_data_aaaammdd(tabela[Bruto.INTERNACAO_DATA]),
++        "diagnostico": padronizar_cid(tabela[Bruto.INTERNACAO_DIAGNOSTICO]),
++    }, index=tabela.index)
++    numero = Bruto.INTERNACAO_NUMERO_DA_AIH
++    identificador = (normalizar_identificador(tabela[numero]) if numero in tabela.columns
++                     else pd.Series(pd.NA, index=tabela.index, dtype="string"))
++    return chave, identificador
++
++
++def remover_duplicatas(tabela: pd.DataFrame,
++                       montar_chave: Callable[[pd.DataFrame], tuple[pd.DataFrame, pd.Series]]) -> pd.DataFrame:
++    if tabela.empty:
++        return tabela
++    chave, identificador = montar_chave(tabela)
++    return tabela[~marcar_duplicatas(chave, identificador)]
+ 
+ 
+ def filtrar_janela_de_anos(tabela: pd.DataFrame, coluna_da_data: str, anos: Sequence[int]) -> pd.DataFrame:
+@@ -80,8 +140,9 @@ class EspecificacaoDaBase:
+     coluna_da_data_bruta: str
+     coluna_da_data_derivada: str
+     converter_data: Callable[[pd.Series], pd.Series]
+-    escolher_colunas_de_duplicidade: Callable[[pd.DataFrame], list[str]]
++    montar_chave_de_duplicidade: Callable[[pd.DataFrame], tuple[pd.DataFrame, pd.Series]]
+     enriquecer: Callable[[pd.DataFrame], pd.DataFrame]
++    descricao_da_duplicidade: str = ""
+ 
+ 
+ def limpar_base(brutos: pd.DataFrame, especificacao: EspecificacaoDaBase, anos: Sequence[int],
+@@ -93,8 +154,8 @@ def limpar_base(brutos: pd.DataFrame, especificacao: EspecificacaoDaBase, anos:
+     residentes = funil.aplicar(f"2. Residentes da UF (prefixo {configuracao.prefixo_do_codigo_da_uf})", padronizados,
+                                partial(filtrar_residentes_da_uf, coluna_do_municipio=especificacao.coluna_do_municipio,
+                                        prefixo_da_uf=configuracao.prefixo_do_codigo_da_uf))
+-    colunas_de_duplicidade = especificacao.escolher_colunas_de_duplicidade(residentes)
+-    unicos = funil.aplicar("3. Sem duplicatas", residentes, partial(remover_duplicatas, colunas=colunas_de_duplicidade))
++    unicos = funil.aplicar(f"3. Sem duplicatas ({especificacao.descricao_da_duplicidade})", residentes,
++                           partial(remover_duplicatas, montar_chave=especificacao.montar_chave_de_duplicidade))
+     datas = especificacao.converter_data(unicos[especificacao.coluna_da_data_bruta])
+     com_data = unicos.assign(**{especificacao.coluna_da_data_derivada: datas})
+     na_janela = funil.aplicar(f"4. Data na janela {min(anos)}-{max(anos)}", com_data, partial(
+@@ -107,14 +168,6 @@ def padronizar_municipio(tabela: pd.DataFrame, coluna: str, configuracao: Config
+     return tabela.assign(**{coluna: codigos})
+ 
+ 
+-def colunas_de_duplicidade_das_internacoes(tabela: pd.DataFrame, configuracao: Configuracao) -> list[str]:
+-    """Usa o número da AIH quando existe; sem ele, só linhas integralmente iguais são duplicatas."""
+-    numero_da_aih = Bruto.INTERNACAO_NUMERO_DA_AIH
+-    if numero_da_aih in tabela.columns and tabela[numero_da_aih].notna().any():
+-        return [numero_da_aih]
+-    return colunas_existentes(tabela, configuracao.colunas_das_internacoes)
+-
+-
+ def especificacao_dos_obitos(configuracao: Configuracao) -> EspecificacaoDaBase:
+     return EspecificacaoDaBase(
+         nome="óbitos",
+@@ -123,8 +176,9 @@ def especificacao_dos_obitos(configuracao: Configuracao) -> EspecificacaoDaBase:
+         coluna_da_data_bruta=Bruto.OBITO_DATA,
+         coluna_da_data_derivada=Col.DATA_OBITO,
+         converter_data=converter_data_ddmmaaaa,
+-        escolher_colunas_de_duplicidade=partial(colunas_existentes, preferidas=configuracao.colunas_dos_obitos),
+-        enriquecer=enriquecer_obitos)
++        montar_chave_de_duplicidade=chave_dos_obitos,
++        enriquecer=enriquecer_obitos,
++        descricao_da_duplicidade="NUMERODO; sem ele, chave normalizada")
+ 
+ 
+ def especificacao_das_internacoes(configuracao: Configuracao) -> EspecificacaoDaBase:
+@@ -135,8 +189,9 @@ def especificacao_das_internacoes(configuracao: Configuracao) -> EspecificacaoDa
+         coluna_da_data_bruta=Bruto.INTERNACAO_DATA,
+         coluna_da_data_derivada=Col.DATA_INTERNACAO,
+         converter_data=converter_data_aaaammdd,
+-        escolher_colunas_de_duplicidade=partial(colunas_de_duplicidade_das_internacoes, configuracao=configuracao),
+-        enriquecer=enriquecer_internacoes)
++        montar_chave_de_duplicidade=chave_das_internacoes,
++        enriquecer=enriquecer_internacoes,
++        descricao_da_duplicidade="N_AIH; sem ele, chave normalizada")
+ 
+ 
+ def limpar_obitos(brutos: pd.DataFrame, configuracao: Configuracao) -> ResultadoDaLimpeza:
+diff --git a/dcj/permutacao.py b/dcj/permutacao.py
+index 0b0c695..d1d3d78 100644
+--- a/dcj/permutacao.py
++++ b/dcj/permutacao.py
+@@ -9,7 +9,10 @@ from dcj.configuracao import Configuracao
+ from dcj.pareamento import (
+     adicionar_dias_ate_o_obito, manter_internacoes_antes_do_obito, manter_um_para_um, preparar_lado)
+ 
+-ETAPAS_DO_PAREAMENTO = ("bloco + dia/mês iguais", "+ internação <= óbito", "+ 1:1 (pares finais)")
++# A 1ª etapa é invariante por construção (o embaralhamento preserva as datas de nascimento de cada bloco):
++# excesso 0 e p = 1 sempre. A evidência de vínculo real está nas etapas 2 e 3, que dependem das datas.
++ETAPAS_DO_PAREAMENTO = ("chave igual (invariante ao acaso)", "+ óbito 0-365 dias após a internação",
++                        "+ 1:1 (pares finais)")
+ BLOCO_DO_EMBARALHAMENTO = [Col.MUNICIPIO, Col.SEXO]
+ 
+ 
+diff --git a/dcj/sinan.py b/dcj/sinan.py
+index ec3c06f..6d16bf9 100644
+--- a/dcj/sinan.py
++++ b/dcj/sinan.py
+@@ -8,6 +8,8 @@ casos a revisar manualmente. Regras temporais: óbito >= primeiros sintomas; int
+ sintomas menos 30 dias (as mesmas do notebook original)."""
+ from __future__ import annotations
+ 
++import logging
++
+ import pandas as pd
+ 
+ from dcj.colunas import Bruto, Col
+@@ -18,6 +20,7 @@ from dcj.padronizacao import limpar_texto_numerico, padronizar_sexo
+ # Nos dados do notebook original CS_SEXO só trouxe "M" e "F"; qualquer outro código (ex.: "I") é descartado.
+ MAPA_SEXO_DO_SINAN = {"M": "M", "F": "F"}
+ COLUNA_DE_SINTOMAS = Bruto.NOTIFICACAO_PRIMEIROS_SINTOMAS
++registro = logging.getLogger(__name__)
+ CHAVE_DO_SINAN = [Col.ANO_NASCIMENTO, Col.SEXO, Col.MUNICIPIO]
+ MARGEM_DA_INTERNACAO_EM_DIAS = 30
+ # Sobrevida média da DCJ ~5 meses (Boletim DCJ, dcj/referencias.py): óbito mais de 1 ano após os sintomas é implausível.
+@@ -63,7 +66,20 @@ def preparar_notificacoes(notificacoes: pd.DataFrame, configuracao: Configuracao
+            Col.DATA_OBITO_NOTIFICADA: extrair_data_do_obito_notificada(com_indice_unico),
+            Col.CLASSIFICACAO_FINAL: extrair_classificacao_final(com_indice_unico)})
+     com_sintomas = preparadas.dropna(subset=[Col.DATA_PRIMEIROS_SINTOMAS])
+-    return manter_residentes_da_uf(com_sintomas, configuracao).reset_index(drop=True)
++    residentes = manter_residentes_da_uf(com_sintomas, configuracao)
++    return remover_notificacoes_duplicadas(residentes).reset_index(drop=True)
++
++
++def remover_notificacoes_duplicadas(notificacoes: pd.DataFrame) -> pd.DataFrame:
++    """Mesma pessoa (ano de nascimento, sexo, município) com a mesma data de primeiros sintomas é a mesma
++    notificação, venha ela repetida no arquivo (preliminar e final) ou renotificada. Fica a mais completa."""
++    chave = CHAVE_DO_SINAN + [Col.DATA_PRIMEIROS_SINTOMAS]
++    informacao = notificacoes[[Col.DATA_OBITO_NOTIFICADA, Col.CLASSIFICACAO_FINAL]].notna().sum(axis=1)
++    ordenadas = notificacoes.assign(_informacao=informacao).sort_values("_informacao", ascending=False, kind="stable")
++    unicas = ordenadas.drop_duplicates(subset=chave).drop(columns="_informacao").sort_index()
++    if len(unicas) < len(notificacoes):
++        registro.info("SINAN: %d notificações duplicadas removidas", len(notificacoes) - len(unicas))
++    return unicas
+ 
+ 
+ def manter_residentes_da_uf(notificacoes: pd.DataFrame, configuracao: Configuracao) -> pd.DataFrame:
+diff --git a/tests/test_duplicatas.py b/tests/test_duplicatas.py
+new file mode 100644
+index 0000000..a688538
+--- /dev/null
++++ b/tests/test_duplicatas.py
+@@ -0,0 +1,67 @@
++"""Duplicatas: a mesma declaração ou AIH vinda de dois arquivos, com formatos diferentes nos campos brutos."""
++import pandas as pd
++
++from dcj.colunas import Bruto, Col
++from dcj.limpeza import (
++    chave_das_internacoes, chave_dos_obitos, marcar_duplicatas, normalizar_identificador, remover_duplicatas)
++from dcj.sinan import remover_notificacoes_duplicadas
++
++
++def obitos_brutos(*linhas):
++    padrao = {Bruto.OBITO_MUNICIPIO: "431490", Bruto.OBITO_SEXO: "1", Bruto.OBITO_NASCIMENTO: "01021950",
++              Bruto.OBITO_DATA: "15032019", Bruto.OBITO_CAUSA: "F03", Bruto.OBITO_IDADE: "469"}
++    return pd.DataFrame([{**padrao, **linha} for linha in linhas])
++
++
++def test_identificador_ignora_formatacao():
++    valores = pd.Series(["0012345", "12345.0", " 12345 ", "", None])
++    assert normalizar_identificador(valores).tolist()[:3] == ["12345"] * 3
++    assert normalizar_identificador(valores).isna().tolist()[3:] == [True, True]
++
++
++def test_mesma_declaracao_com_formatos_diferentes_e_removida():
++    # estadual x consolidado nacional: CID com ponto e minúscula, NUMERODO com zeros à esquerda
++    tabela = obitos_brutos({Bruto.OBITO_NUMERO_DA_DECLARACAO: "0099887766"},
++                           {Bruto.OBITO_NUMERO_DA_DECLARACAO: "99887766", Bruto.OBITO_CAUSA: "f03"})
++    assert len(remover_duplicatas(tabela, chave_dos_obitos)) == 1
++
++
++def test_sem_numerodo_usa_chave_normalizada():
++    tabela = obitos_brutos({}, {Bruto.OBITO_CAUSA: "F03 "}, {Bruto.OBITO_DATA: "16032019"})
++    assert len(remover_duplicatas(tabela, chave_dos_obitos)) == 2  # o terceiro morreu em outro dia
++
++
++def test_linha_sem_numerodo_igual_a_uma_com_numerodo_e_removida():
++    tabela = obitos_brutos({Bruto.OBITO_NUMERO_DA_DECLARACAO: "123"}, {Bruto.OBITO_NUMERO_DA_DECLARACAO: None})
++    assert len(remover_duplicatas(tabela, chave_dos_obitos)) == 1
++
++
++def test_numerodos_diferentes_nunca_sao_fundidos():
++    tabela = obitos_brutos({Bruto.OBITO_NUMERO_DA_DECLARACAO: "1"}, {Bruto.OBITO_NUMERO_DA_DECLARACAO: "2"})
++    assert len(remover_duplicatas(tabela, chave_dos_obitos)) == 2
++
++
++def test_aih_repetida_em_competencias_diferentes_e_uma_so():
++    tabela = pd.DataFrame({Bruto.INTERNACAO_MUNICIPIO: ["431490"] * 3, Bruto.INTERNACAO_SEXO: ["1"] * 3,
++                           Bruto.INTERNACAO_NASCIMENTO: ["19500201"] * 3, Bruto.INTERNACAO_DATA: ["20190110"] * 3,
++                           Bruto.INTERNACAO_DIAGNOSTICO: ["G318", "G318", "F03"],
++                           Bruto.INTERNACAO_NUMERO_DA_AIH: ["4319100000001", "4319100000001.0", "4319100000002"]})
++    assert len(remover_duplicatas(tabela, chave_das_internacoes)) == 2
++
++
++def test_marcar_duplicatas_mantem_a_primeira():
++    chave = pd.DataFrame({"x": [1, 1, 2]})
++    assert marcar_duplicatas(chave, pd.Series([pd.NA] * 3, dtype="string")).tolist() == [False, True, False]
++
++
++def test_notificacao_repetida_fica_a_mais_completa():
++    base = {Col.ANO_NASCIMENTO: 1950, Col.SEXO: "M", Col.MUNICIPIO: "431490",
++            Col.DATA_PRIMEIROS_SINTOMAS: pd.Timestamp("2019-01-10")}
++    notificacoes = pd.DataFrame([
++        {**base, Col.DATA_OBITO_NOTIFICADA: pd.NaT, Col.CLASSIFICACAO_FINAL: pd.NA},
++        {**base, Col.DATA_OBITO_NOTIFICADA: pd.Timestamp("2019-05-01"), Col.CLASSIFICACAO_FINAL: "1"},
++        {**base, Col.DATA_PRIMEIROS_SINTOMAS: pd.Timestamp("2021-03-01"),
++         Col.DATA_OBITO_NOTIFICADA: pd.NaT, Col.CLASSIFICACAO_FINAL: pd.NA},
++    ])
++    unicas = remover_notificacoes_duplicadas(notificacoes)
++    assert len(unicas) == 2 and unicas[Col.CLASSIFICACAO_FINAL].iloc[0] == "1"
+diff --git a/tests/test_limpeza.py b/tests/test_limpeza.py
+index 04d3c58..477739e 100644
+--- a/tests/test_limpeza.py
++++ b/tests/test_limpeza.py
+@@ -12,9 +12,10 @@ def test_filtrar_residentes_mantem_so_o_prefixo_da_uf():
+     assert filtrar_residentes_da_uf(tabela, "m", "43")["m"].tolist() == ["431490"]
+ 
+ 
+-def test_remover_duplicatas_usa_so_as_colunas_indicadas():
++def test_remover_duplicatas_usa_a_chave_montada():
+     tabela = pd.DataFrame({"a": [1, 1, 2], "b": [9, 8, 7]})
+-    assert len(remover_duplicatas(tabela, ["a"])) == 2
++    chave = lambda t: (t[["a"]], pd.Series(pd.NA, index=t.index, dtype="string"))
++    assert len(remover_duplicatas(tabela, chave)) == 2
+ 
+ 
+ def test_filtrar_janela_de_anos():
+diff --git a/tests/test_permutacao.py b/tests/test_permutacao.py
+index f005b76..89799d8 100644
+--- a/tests/test_permutacao.py
++++ b/tests/test_permutacao.py
+@@ -1,27 +1,34 @@
++import numpy as np
++import pandas as pd
++
+ from conftest import criar_internacoes_limpas, criar_obitos_limpos
+ from dcj.colunas import Col
+ from dcj.pareamento import parear
+-from dcj.permutacao import contar_etapas, montar_candidatos_do_bloco, avaliar_pareamento_contra_o_acaso
++from dcj.permutacao import ETAPAS_DO_PAREAMENTO, avaliar_pareamento_contra_o_acaso, embaralhar_dentro_do_bloco
+ 
+ 
+ def criar_base_com_pessoas(quantidade: int):
++    """Óbitos espalhados por 2017-2022 e internação 30 dias antes: o embaralhamento só tem poder quando as datas
++    variam, porque a etapa 'chave igual' é invariante (a permutação preserva as datas de nascimento do bloco)."""
+     nascimentos = [f"19{40 + indice % 40}-{1 + indice % 12:02d}-{1 + indice % 27:02d}" for indice in range(quantidade)]
+-    obitos = criar_obitos_limpos(*[{Col.DATA_NASCIMENTO: n, Col.DATA_OBITO: "2020-06-01"} for n in nascimentos])
+-    internacoes = criar_internacoes_limpas(*[{Col.DATA_NASCIMENTO: n, Col.DATA_INTERNACAO: "2020-01-01"} for n in nascimentos])
++    datas_do_obito = pd.Timestamp("2017-03-01") + pd.to_timedelta([70 * indice for indice in range(quantidade)], "D")
++    obitos = criar_obitos_limpos(*[{Col.DATA_NASCIMENTO: n, Col.DATA_OBITO: d}
++                                   for n, d in zip(nascimentos, datas_do_obito)])
++    internacoes = criar_internacoes_limpas(*[{Col.DATA_NASCIMENTO: n, Col.DATA_INTERNACAO: d - pd.Timedelta(30, "D")}
++                                             for n, d in zip(nascimentos, datas_do_obito)])
+     return internacoes, obitos
+ 
+ 
+ def test_contagem_observada_reproduz_o_pareamento_real(configuracao):
+     internacoes, obitos = criar_base_com_pessoas(30)
+-    candidatos = montar_candidatos_do_bloco(internacoes, obitos, True)
+-    observado = contar_etapas(candidatos, candidatos.dia_e_mes_das_internacoes, "ultima")
+-    assert observado.pares_finais == parear(internacoes, obitos, configuracao).total_de_pares
++    tabela = avaliar_pareamento_contra_o_acaso(internacoes, obitos, configuracao)
++    assert tabela["etapa"].tolist() == list(ETAPAS_DO_PAREAMENTO)
++    assert tabela.iloc[-1]["observado"] == parear(internacoes, obitos, configuracao).total_de_pares
+ 
+ 
+ def test_pares_reais_superam_o_acaso(configuracao):
+     internacoes, obitos = criar_base_com_pessoas(30)
+-    tabela = avaliar_pareamento_contra_o_acaso(internacoes, obitos, configuracao)
+-    ultima_etapa = tabela.iloc[-1]
++    ultima_etapa = avaliar_pareamento_contra_o_acaso(internacoes, obitos, configuracao).iloc[-1]
+     assert ultima_etapa["observado"] > ultima_etapa["percentil_95_ao_acaso"]
+     assert ultima_etapa["p_valor_unilateral"] < 0.05
+ 
+@@ -31,3 +38,22 @@ def test_resultado_e_reprodutivel_com_a_mesma_semente(configuracao):
+     primeira = avaliar_pareamento_contra_o_acaso(internacoes, obitos, configuracao)
+     segunda = avaliar_pareamento_contra_o_acaso(internacoes, obitos, configuracao)
+     assert primeira.equals(segunda)
++
++
++def test_embaralhamento_nao_cruza_blocos():
++    valores = np.array([1, 2, 3, 10, 20, 30])
++    blocos = np.array([0, 0, 0, 1, 1, 1])
++    sorteados = embaralhar_dentro_do_bloco(valores, blocos, np.random.default_rng(0))
++    assert sorted(sorteados[:3]) == [1, 2, 3] and sorted(sorteados[3:]) == [10, 20, 30]
++
++
++def test_sem_candidatos_devolve_tabela_vazia(configuracao):
++    internacoes, obitos = criar_base_com_pessoas(3)
++    obitos[Col.MUNICIPIO] = "430000"
++    assert avaliar_pareamento_contra_o_acaso(internacoes, obitos, configuracao).empty
++
++
++def test_primeira_etapa_e_invariante_por_construcao(configuracao):
++    internacoes, obitos = criar_base_com_pessoas(30)
++    primeira = avaliar_pareamento_contra_o_acaso(internacoes, obitos, configuracao).iloc[0]
++    assert primeira["excesso"] == 0 and primeira["p_valor_unilateral"] == 1.0
