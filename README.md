@@ -49,6 +49,21 @@ Para garantir a sanidade dos resultados, os outputs do pipeline para o **CID-10:
 
 ---
 
+## 📊 Resultados Principais (Estudo de Caso: RS, 2017-2022)
+
+O pipeline foi executado na base do Rio Grande do Sul e os resultados foram auditados estatisticamente:
+
+| Métrica | Resultado Encontrado | Validação Estatística / Oficial |
+| :--- | :--- | :--- |
+| **Qualidade da Base (TabNet)** | 52.345 óbitos (causa básica) | 99,2% de concordância com o DATASUS (52.740 oficiais) |
+| **Pareamento SIM x SIH** | 640 pares válidos | *p = 0.0005* (Esperado ao acaso: 186) |
+| **Cruzamento SINAN x SIM** | 18 vínculos reais | *p = 0.0005* (Esperado ao acaso: 0.70) |
+| **Subnotificação (Chapman)** | 187 casos estimados (IC 95%: 106-268) | Apenas 45 notificações formais no SINAN |
+| **Escore de Suspeição** | 312 casos sinalizados | 180 na Pandemia vs 132 Pré-Pandemia |
+| **Hipótese Pandêmica** | Não confirmada estatisticamente | *Teste de Fisher: p = 0.34* |
+
+**Conclusão do Estudo:** A integração das bases provou que a DCJ possui um passivo histórico de subnotificação. Não houve aumento estatisticamente significativo de casos causados pela pandemia de COVID-19; o problema é estrutural (falhas de codificação de causa básica e perda de seguimento).
+
 ## 🛠️ Instalação e Uso
 
 ### 1. Requisitos e Instalação
