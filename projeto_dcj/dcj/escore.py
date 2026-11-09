@@ -17,9 +17,13 @@ from dcj.referencias import IDADE_MAXIMA_PLAUSIVEL, REFERENCIA_DO_BOLETIM
 Z_DE_95_POR_CENTO = 1.96
 
 
+import numpy as np
+
 def pontuar_declinio_rapido(dias_ate_o_obito: pd.Series, regras: RegrasDoEscore) -> np.ndarray:
-    dentro_da_janela = dias_ate_o_obito.between(*regras.janela_do_declinio_em_dias)
-    return np.where(dentro_da_janela, regras.pontos_declinio_rapido, 0)
+    """Atribui pontos com base no tempo entre internação e óbito."""
+    limites_e_pontos = regras.pontos_do_declinio_por_limite_em_dias
+    condicoes = [dias_ate_o_obito.between(0, limite) for limite, _ in limites_e_pontos]
+    return np.select(condicoes, [pontos for _, pontos in limites_e_pontos], default=0)
 
 
 def pontuar_faixa_etaria(idades_em_anos: pd.Series, regras: RegrasDoEscore) -> np.ndarray:

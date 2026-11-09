@@ -17,14 +17,14 @@ ROTULO_FORA_DA_JANELA = "Fora da janela"
 @dataclass(frozen=True)
 class RegrasDoEscore:
     cids_genericos: tuple[str, ...] = ("F03", "G309", "G310", "G319", "R54", "I64", "R99")
-    pontos_declinio_rapido: int = 40
+    
+    pontos_do_declinio_por_limite_em_dias: tuple[tuple[int, int], ...] = ((180, 40), (365, 20))
+    
     pontos_faixa_etaria: int = 30
     pontos_cid_generico: int = 30
-    janela_do_declinio_em_dias: tuple[int, int] = (0, 365)
-    # Ref.: Boletim DCJ (dcj/referencias.py), p. 12 e 18. Esta faixa privilegia idades abaixo do
-    # típico das demências comuns, mas exclui ~44% das notificações suspeitas do país (65+).
-    # Esses casos só chegam ao limiar pelo CID genérico; ver comparar_faixas_etarias().
-    faixa_etaria_em_anos: tuple[int, int] = (30, 64)
+    
+    faixa_etaria_em_anos: tuple[int, int] = (55, 74)
+    
     limiar_de_sinalizacao: int = 70
 
 
@@ -40,7 +40,7 @@ class Configuracao:
     exigir_mesmo_municipio: bool = True
     criterio_de_desempate: CriterioDeDesempate = "ultima"
     regras_do_escore: RegrasDoEscore = field(default_factory=RegrasDoEscore)
-    numero_de_permutacoes: int = 200
+    numero_de_permutacoes: int = 2000
     semente_aleatoria: int = 42
     populacao_da_uf: Optional[int] = None
 

@@ -1,8 +1,7 @@
 from conftest import criar_internacoes_limpas, criar_obitos_limpos
 from dcj.colunas import Col
 from dcj.pareamento import parear
-from dcj.permutacao import contar_etapas, montar_candidatos_do_bloco, avaliar_pareamento_contra_o_acaso
-
+from dcj.permutacao import ETAPAS_DO_PAREAMENTO, avaliar_pareamento_contra_o_acaso, embaralhar_dentro_do_bloco
 
 def criar_base_com_pessoas(quantidade: int):
     nascimentos = [f"19{40 + indice % 40}-{1 + indice % 12:02d}-{1 + indice % 27:02d}" for indice in range(quantidade)]
