@@ -138,13 +138,6 @@ O painel consome apenas tabelas agregadas da camada **Gold** (em `dados_rs_drp/g
 
 ---
 
-## 📚 Como Citar
-
-Se este pipeline for útil para sua pesquisa, por favor cite o artigo associado:
-
-> RODRIGUES, Isabela Acosta; PEREIRA, Rafael Teodósio. **Detecção Computacional de Subnotificação da Doença de Creutzfeldt-Jakob no SUS por Pareamento de Bases Administrativas e Validação por Permutação**. 2026.
-
----
 
 ## 📄 Licença
 
