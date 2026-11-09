@@ -7,7 +7,6 @@ from dcj.colunas import Col
 from dcj.ingestao import baixar_notificacoes, baixar_obitos
 from dados_sinteticos import gerar_dados_brutos
 
-
 def test_auditoria_mostra_outras_ufs_e_duplicatas(configuracao):
     gerar_dados_brutos(configuracao.pasta_raiz)
     auditoria = auditar_obitos_brutos(carregar_obitos_brutos(configuracao), configuracao)
@@ -112,3 +111,25 @@ def test_namespace_do_pysus_aceita_uf_ou_state(monkeypatch):
         return pd.DataFrame({"SEXO": [uf]})
     monkeypatch.setitem(sys.modules, "pysus", types.SimpleNamespace(ftp=types.SimpleNamespace(sim=sim_so_com_uf)))
     assert obter_obitos_do_pysus("RS", 2019)["SEXO"].tolist() == ["RS"]
+
+
+def test_contar_declaracoes_com_a810_discordante_retorna_1():
+    """Uma cópia tem A810 na LINHAA, a outra não: deve retornar 1 declaração discordante."""
+    import pandas as pd
+    from dcj.cobertura import contar_declaracoes_com_a810_discordante
+    from dcj.colunas import Bruto
+
+    brutos = pd.DataFrame({
+        Bruto.OBITO_CAUSA: ["F03", "F03"],
+        Bruto.OBITO_SEXO: ["M", "M"],
+        Bruto.OBITO_NASCIMENTO: ["01011950", "01011950"],
+        Bruto.OBITO_MUNICIPIO: ["431490", "431490"],
+        Bruto.OBITO_DATA: ["15032019", "15032019"],
+        Bruto.OBITO_IDADE: ["469", "469"],
+        "LINHAA": ["A810", None],
+    })
+    
+    chave = [Bruto.OBITO_SEXO, Bruto.OBITO_NASCIMENTO, Bruto.OBITO_MUNICIPIO, 
+             Bruto.OBITO_DATA, Bruto.OBITO_CAUSA, Bruto.OBITO_IDADE]
+    
+    assert contar_declaracoes_com_a810_discordante(brutos, chave, ("LINHAA",)) == 1

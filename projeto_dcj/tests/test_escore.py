@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import pytest
 
 from conftest import criar_internacoes_limpas
 from dcj.colunas import Col
@@ -23,6 +24,14 @@ def criar_pares(dias: int, idade: float, causa: str, data_obito: str = "2020-06-
         Col.DATA_INTERNACAO: [dt_internacao]
     })
 
+
+def test_regras_do_escore_rejeitam_limites_fora_de_ordem():
+    with pytest.raises(ValueError, match="crescentes"):
+        RegrasDoEscore(pontos_do_declinio_por_limite_em_dias=((365, 20), (180, 40)))
+
+def test_regras_do_escore_rejeitam_faixa_etaria_invertida():
+    with pytest.raises(ValueError, match="faixa etária"):
+        RegrasDoEscore(faixa_etaria_em_anos=(74, 55))
 
 def test_declinio_rapido_inclui_os_limites_da_janela():
     # NOVA REGRA: (180 dias = 40 pts) e (365 dias = 20 pts)
