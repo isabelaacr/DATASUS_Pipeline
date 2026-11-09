@@ -18,14 +18,27 @@ ROTULO_FORA_DA_JANELA = "Fora da janela"
 class RegrasDoEscore:
     cids_genericos: tuple[str, ...] = ("F03", "G309", "G310", "G319", "R54", "I64", "R99")
     
+    # Sobrevida média da DCJ ~5 meses (Boletim DCJ, SVS/MS, 2022): até 180 dias pontua cheio.
     pontos_do_declinio_por_limite_em_dias: tuple[tuple[int, int], ...] = ((180, 40), (365, 20))
     
     pontos_faixa_etaria: int = 30
     pontos_cid_generico: int = 30
     
+    # Pico de notificações de DCJ (Boletim DCJ, p. 12 e 18); a faixa 30-64 anterior excluía os idosos.
     faixa_etaria_em_anos: tuple[int, int] = (55, 74)
     
     limiar_de_sinalizacao: int = 70
+
+    def __post_init__(self) -> None:
+        # Valida que os limites estão em ordem crescente (evita bugs silenciosos no np.select)
+        limites = [limite for limite, _ in self.pontos_do_declinio_por_limite_em_dias]
+        if limites != sorted(set(limites)):
+            raise ValueError("Os limites do declínio devem ser crescentes e sem repetição.")
+        
+        # Valida que a faixa etária é coerente
+        minimo, maximo = self.faixa_etaria_em_anos
+        if minimo > maximo:
+            raise ValueError("A faixa etária deve ter mínimo menor ou igual ao máximo.")
 
 
 @dataclass(frozen=True)

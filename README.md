@@ -4,10 +4,18 @@
 
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)
 <<<<<<< HEAD
-=======
+============
+
 ![Tests](<https://img.shields.io/badge/tests-79%20passed-green.svg>)
+
 >>>>>>> 0ede1f9 (feat: aplica correcoes de validacao (permutacao, CIDs genericos, causas associadas) e atualiza resultados)
-![PySUS](https://img.shields.io/badge/PySUS-2.11.7-orange.svg)
+>>>>>>> ![PySUS](https://img.shields.io/badge/PySUS-2.11.7-orange.svg)
+>>>>>>>
+>>>>>>
+>>>>>
+>>>>
+>>>
+>>
 
 ---
 
@@ -53,8 +61,6 @@ Para garantir a sanidade dos resultados gerados pelo pipeline, os outputs brutos
 * **Leitura:** no máximo ~77% dos óbitos A81.0 não têm notificação correspondente (limite superior: a chave fraca
   também perde pares). O Chapman (~187) passa do teto plausível e deve ser lido como limite superior.
 
-
-
 ---
 
 ## 🛠️ Instalação e Uso
@@ -84,3 +90,15 @@ O projeto conta com uma suíte de testes unitários e de integração utilizando
 ```bash
 pytest projeto_dcj/tests/
 ```
+
+
+
+## 🖥️ Painel Interativo (FastAPI + DuckDB + Streamlit)
+
+O pipeline conta com uma camada de visualização interativa, separada do motor de processamento.
+
+- **Backend (API):** `uvicorn api:app --reload`
+- **Frontend (Dashboard):** `streamlit run painel.py`
+
+O painel consome apenas tabelas agregadas da camada **Gold** (em `dados_rs_drp/gold/`), garantindo a conformidade com a LGPD e a privacidade dos pacientes. Para gerar as tabelas Gold a partir dos resultados do pipeline, rode:
+`python gerar_gold.py`
