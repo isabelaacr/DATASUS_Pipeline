@@ -49,10 +49,6 @@ Para garantir a sanidade dos resultados, os outputs do pipeline para o **CID-10:
 
 ---
 
-## 📊 Resultados Principais (Estudo de Caso: RS, 2017-2022)
-
-O pipeline foi executado na base do Rio Grande do Sul e os resultados foram auditados estatisticamente:
-
 | Métrica | Resultado Encontrado | Validação Estatística / Oficial |
 | :--- | :--- | :--- |
 | **Qualidade da Base (TabNet)** | 52.345 óbitos (causa básica) | 99,2% de concordância com o DATASUS (52.740 oficiais) |
