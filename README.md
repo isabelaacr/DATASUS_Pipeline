@@ -1,21 +1,11 @@
-# 🧬 Pipeline DCJ: Cruzamento de Dados e Vigilância Epidemiológica
+# 🧬 Pipeline DCJ: Detecção Computacional de Subnotificação no SUS
 
-**Pipeline para pareamento determinístico de dados (SINAN x SIM x SIH) e escore de suspeição da Doença de Creutzfeldt-Jakob (DCJ) no Brasil.**
+**Pipeline de pareamento determinístico (SIM x SIH x SINAN), escoragem de suspeição e validação estatística para a Doença de Creutzfeldt-Jakob (DCJ).**
 
-![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)
-<<<<<<< HEAD
-============
-
-![Tests](<https://img.shields.io/badge/tests-79%20passed-green.svg>)
-
->>>>>>> 0ede1f9 (feat: aplica correcoes de validacao (permutacao, CIDs genericos, causas associadas) e atualiza resultados)
->>>>>>> ![PySUS](https://img.shields.io/badge/PySUS-2.11.7-orange.svg)
->>>>>>>
->>>>>>
->>>>>
->>>>
->>>
->>
+![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)
+![PySUS](https://img.shields.io/badge/PySUS-2.11.7-orange.svg)
+![Tests](https://img.shields.io/badge/tests-79%20passed-green.svg)
+![License](https://img.shields.io/badge/license-MIT-lightgrey.svg)
 
 ---
 
@@ -27,7 +17,7 @@ A Doença de Creutzfeldt-Jakob (DCJ) é uma doença priônica rara, neurodegener
 * **Dados incompletos:** 55,8% das notificações não possuem dados de evolução (óbito/cura), e 36,3% não têm classificação final.
 * **Inconsistências:** Há registros de "cura" em uma doença com 100% de letalidade, demonstrando falhas de preenchimento.
 
-**A solução proposta por este projeto:** Como o SINAN é frágil, este pipeline cruza as notificações do SINAN com os registros de óbitos (SIM) e internações (SIH) do DATASUS. Utilizando regras temporais e testes de permutação, o código filtra falsos positivos e encontra os "vínculos reais" de pacientes, permitindo uma vigilância ativa mais confiável.
+**A solução proposta:** Como o SINAN é frágil, este pipeline cruza as notificações com os registros de óbitos (SIM) e internações (SIH) do DATASUS. Utilizando regras temporais rigorosas e testes de permutação (Monte Carlo), o código filtra falsos positivos e encontra os "vínculos reais" de pacientes, permitindo uma vigilância ativa e auditável.
 
 ---
 
@@ -35,31 +25,27 @@ A Doença de Creutzfeldt-Jakob (DCJ) é uma doença priônica rara, neurodegener
 
 - **Ingestão Automatizada:** Download e limpeza de dados do SIM, SIH e SINAN via `PySUS`.
 - **Filtro Inteligente de UF:** Identifica e mantém apenas residentes do estado/região de interesse (via prefixo IBGE).
-- **Deduplicação:** Remove registros duplicados (o SIM costuma ter até 50% de duplicatas).
-- **Pareamento Determinístico (SIM x SIH):** Cruza dados por chave (ano nasc., sexo, município) com travas temporais (internação antes do óbito).
-- **Escore de Suspeição:** Pontua os pares com base em declínio rápido, faixa etária e CID genérico.
-- **Validação Estatística:** Utiliza **Teste de Permutação** (Monte Carlo) e **Intervalo de Wilson** para provar que os cruzamentos não são fruto do acaso.
-- **Cruzamento Exploratório (SINAN):** Valida a chave fraca do SINAN contra o SIM e o SIH, gerando listas para revisão médica.
+- **Deduplicação Crítica:** Remoção de duplicatas estruturais (o SIM bruto costuma apresentar ~50% de registros duplicados por sobreposição de arquivos nacionais/estaduais).
+- **Pareamento Determinístico (SIM x SIH):** Cruzamento por chave (ano nasc., sexo, município) com travas temporais (internação obrigatoriamente antes do óbito e janela de até 365 dias).
+- **Escore de Suspeição:** Pontua os pares com base em declínio fulminante, faixa etária atípica e CID genérico (mascaramento).
+- **Validação Estatística:** Utiliza **Teste de Permutação** (Monte Carlo), **Teste Exato de Fisher**, **Intervalo de Wilson** e **Captura-Recaptura (Chapman)** para provar que os cruzamentos não são fruto do acaso.
+- **Auditoria TabNet:** Módulo de checagem cruzada que compara os totais do pipeline com a extração oficial do DATASUS.
 
 ---
 
-## 📊 Parâmetros de Validação (Métricas Esperadas)
+## 📊 Resultados e Métricas de Validação
 
-Para garantir a sanidade dos resultados gerados pelo pipeline, os outputs brutos para o código **CID-10: A81.0** (ou chaves geradas por escore) devem se alinhar às séries auditadas pelo Ministério da Saúde:
-
-### 🇧🇷 Cenário Nacional
-
-* **Pico de Notificações:** O ano de 2019 representa o ápice histórico do SINAN com **174 casos suspeitos** notificados.
-* **Efeito Pandemia:** Espera-se uma redução acentuada de registros brutos nos anos de **2020 e 2021** em decorrência da sobrecarga hospitalar por Covid-19.
+Para garantir a sanidade dos resultados, os outputs do pipeline para o **CID-10: A81.0** (e CIDs genéricos mascaradores) são auditados contra a série oficial do Ministério da Saúde.
 
 ### 🦅 Recorte Regional: Rio Grande do Sul (RS), 2017–2022
 
-* **Esperado:** população de 10,88 milhões (Censo 2022) × 1 a 2 óbitos/milhão/ano = **11 a 22 óbitos reais por DCJ/ano**
-  (65 a 131 no período). Rode com `--populacao 10882965`.
-* **Observado na execução de referência:** 44 óbitos com causa básica A81.0 no SIM (~0,7/milhão/ano, abaixo do mínimo),
-  45 notificações no SINAN (~7,5/ano), 28 com CLASSI_FIN=1 e 10 vínculos SINAN × SIM.
-* **Leitura:** no máximo ~77% dos óbitos A81.0 não têm notificação correspondente (limite superior: a chave fraca
-  também perde pares). O Chapman (~187) passa do teto plausível e deve ser lido como limite superior.
+* **População (Censo 2022):** 10.882.965 habitantes.
+* **Esperado teoricamente:** 11 a 22 óbitos reais por DCJ/ano (65 a 131 no período).
+* **Validação TabNet (Ingestão):** O pipeline deduplicado encontrou **52.345** óbitos por causa básica, contra **52.740** do TabNet oficial (margem de erro de 0,7%).
+* **Pareamento SIM x SIH:** Foram gerados **640 pares finais** válidos. O teste de permutação provou que isso é altamente significativo (esperado ao acaso: 186,4; *p* = 0,0005).
+* **Cruzamento SINAN x SIM:** Recuperou **18 vínculos reais** (esperado ao acaso: 0,70; *p* = 0,0005).
+* **Subnotificação (Chapman):** Estimativa de **187 casos reais** (IC 95%: 106–268) no período, contra apenas 45 notificações no SINAN.
+* **Escore de Suspeição:** Sinalizou 312 casos (180 na pandemia; 132 no pré-pandemia). O Teste de Fisher entre os períodos retornou *p* = 0,34, **descartando** um aumento estatisticamente significativo causado pela pandemia.
 
 ---
 
@@ -67,9 +53,11 @@ Para garantir a sanidade dos resultados gerados pelo pipeline, os outputs brutos
 
 ### 1. Requisitos e Instalação
 
+Recomenda-se o uso de um ambiente virtual (`venv` ou `conda`).
+
 ```bash
 # Clone o repositório
-git clone https://github.com
+git clone https://github.com/seu-usuario/DATASUS_Pipeline.git
 cd DATASUS_Pipeline
 
 # Crie e ative o ambiente virtual
@@ -91,14 +79,73 @@ O projeto conta com uma suíte de testes unitários e de integração utilizando
 pytest projeto_dcj/tests/
 ```
 
+### 3. Executando o Pipeline (CLI)
 
+O motor de processamento foi desenhado como uma ferramenta de linha de comando (CLI). Para rodar a esteira completa (ingestão, limpeza, pareamento, escore e validação):
 
-## 🖥️ Painel Interativo (FastAPI + DuckDB + Streamlit)
+```bash
+python -m dcj --dados ..\dados_rs_drp --populacao 10882965
+```
 
-O pipeline conta com uma camada de visualização interativa, separada do motor de processamento.
+*Isso gerará os arquivos de resultado na pasta indicada.*
 
-- **Backend (API):** `uvicorn api:app --reload`
-- **Frontend (Dashboard):** `streamlit run painel.py`
+### 4. Gerando a Camada Gold
 
-O painel consome apenas tabelas agregadas da camada **Gold** (em `dados_rs_drp/gold/`), garantindo a conformidade com a LGPD e a privacidade dos pacientes. Para gerar as tabelas Gold a partir dos resultados do pipeline, rode:
-`python gerar_gold.py`
+Para consolidar os resultados em tabelas agregadas (prontas para o painel):
+
+```bash
+python gerar_gold.py
+```
+
+---
+
+## 🖥️ Painel Interativo (Streamlit)
+
+O projeto conta com uma camada de visualização interativa e auditoria, separada do motor de processamento.
+
+Para iniciar o painel:
+
+```bash
+streamlit run painel.py
+```
+
+O painel consome apenas tabelas agregadas da camada **Gold** (em `dados_rs_drp/gold/`), garantindo a **conformidade com a LGPD** e a privacidade dos pacientes. Ele apresenta abas para:
+1. **Pareamento (SIM x SIH):** Validação por permutação.
+2. **SINAN x SIM:** Prova da existência de vínculos reais.
+3. **Chapman:** Estimativa de casos ocultos.
+4. **Escore de Suspeição:** Funil de casos sinalizados por período.
+5. **Validação TabNet:** Comparação direta com os dados oficiais do DATASUS.
+
+---
+
+## 📂 Estrutura do Projeto
+
+```text
+├── dados_rs_drp/          # Pasta de dados (brutos, processados e Gold)
+├── projeto_dcj/           # Código-fonte do pacote Python
+│   ├── cli.py             # Ponto de entrada da linha de comando
+│   ├── limpeza.py         # Funções de deduplicação e padronização
+│   ├── pareamento.py      # Motor de linkage e travas temporais
+│   ├── permutacao.py      # Testes de Monte Carlo e Fisher
+│   ├── escore.py          # Regras de negócio do escore DCJ
+│   └── testes/            # Suíte de testes unitários
+├── painel.py              # Código do dashboard Streamlit
+├── gerar_gold.py          # Script de exportação para o painel
+├── auditar_tabnet.py      # Script de auditoria externa (DATASUS)
+├── requirements.txt       # Dependências do projeto
+└── README.md              # Este documento
+```
+
+---
+
+## 📚 Como Citar
+
+Se este pipeline for útil para sua pesquisa, por favor cite o artigo associado:
+
+> RODRIGUES, Isabela Acosta; PEREIRA, Rafael Teodósio. **Detecção Computacional de Subnotificação da Doença de Creutzfeldt-Jakob no SUS por Pareamento de Bases Administrativas e Validação por Permutação**. 2026.
+
+---
+
+## 📄 Licença
+
+Este projeto está licenciado sob a licença MIT. Consulte o arquivo `LICENSE` para mais detalhes.
