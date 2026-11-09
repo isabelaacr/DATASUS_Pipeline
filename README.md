@@ -4,7 +4,6 @@
 
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)
 ![Tests](<https://img.shields.io/badge/tests-79%20passed-green.svg>)
->>>>>>> 0ede1f9 (feat: aplica correcoes de validacao (permutacao, CIDs genericos, causas associadas) e atualiza resultados)
 ![PySUS](https://img.shields.io/badge/PySUS-2.11.7-orange.svg)
 
 ---
